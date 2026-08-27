@@ -23,7 +23,6 @@ import { DigitalRuler } from './DigitalRuler';
 import { MagneticGuidesOverlay } from './MagneticGuidesOverlay';
 import { CanvasMinimap } from './CanvasMinimap';
 import { GhostReferenceSettings } from './GhostReferenceModal';
-import { SoundEngine } from '../utils/soundEffects';
 import { SpatialHashGrid } from '../utils/spatialGrid';
 import { 
   ZoomIn, 
@@ -80,6 +79,7 @@ interface CanvasStageProps {
   onToggleKorsi?: () => void;
   ghostReference?: GhostReferenceSettings;
   showMinimap?: boolean;
+  isLiteMode?: boolean;
 }
 
 export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
@@ -98,6 +98,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
   ebruSettings,
   ghostReference,
   showMinimap = true,
+  isLiteMode = false,
   korsiGuides = {
     showGuides: false,
     showMabda: true,
@@ -326,7 +327,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
     }
 
     if (activeGuides.length > 0 && activeSnapLines.length === 0) {
-      SoundEngine.playSnap();
+      // Magnetic guideline snapped
     }
     setActiveSnapLines(activeGuides);
 
@@ -658,6 +659,39 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
 
   // Background Paper Texture Styles
   const getTextureStyle = (): React.CSSProperties => {
+    // High-performance Lite Mode: use flat/fast CSS gradients without heavy SVG feTurbulence
+    if (isLiteMode) {
+      switch (paperTexture) {
+        case 'parchment':
+          return {
+            backgroundColor: '#faf5e8',
+            backgroundImage: 'radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.6) 0%, rgba(217, 186, 140, 0.25) 100%)',
+          };
+        case 'ebru':
+        case 'custom_ebru':
+          return {
+            backgroundColor: '#faf5e8',
+          };
+        case 'gold_fleck':
+          return {
+            backgroundColor: '#fcf8ef',
+          };
+        case 'dark_velvet':
+          return {
+            backgroundColor: '#0a0f1d',
+          };
+        case 'kraft':
+          return {
+            backgroundColor: '#d8b688',
+          };
+        case 'white':
+        default:
+          return {
+            backgroundColor: backgroundColor || '#ffffff'
+          };
+      }
+    }
+
     switch (paperTexture) {
       case 'parchment':
         return {
@@ -755,10 +789,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                 className="absolute inset-0 opacity-30"
                 style={{
                   background: `linear-gradient(135deg, ${ebruSettings.primaryColor} 0%, transparent 40%, ${ebruSettings.secondaryColor} 70%, ${ebruSettings.accentColor} 100%)`,
-                  filter: `blur(${10 - ebruSettings.marblingDensity}px)`,
+                  filter: isLiteMode ? 'none' : `blur(${10 - ebruSettings.marblingDensity}px)`,
                 }}
               />
-              {ebruSettings.goldSpeckles > 0 && (
+              {!isLiteMode && ebruSettings.goldSpeckles > 0 && (
                 <div 
                   className="absolute inset-0 pointer-events-none"
                   style={{

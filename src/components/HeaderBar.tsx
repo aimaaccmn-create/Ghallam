@@ -22,19 +22,17 @@ import {
   Frame,
   Feather,
   X,
-  Volume2,
-  VolumeX,
   Award,
   Compass,
   SunMedium,
   MoveHorizontal,
   FileCode,
   Archive,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Zap
 } from 'lucide-react';
 import { CalligraphyScript, CanvasLayoutMode, CustomUserFont } from '../types/calligraphy';
 import { SCRIPT_FONT_MAP } from '../utils/calligraphyEngine';
-import { SoundEngine } from '../utils/soundEffects';
 
 interface HeaderBarProps {
   currentScript: CalligraphyScript;
@@ -80,6 +78,8 @@ interface HeaderBarProps {
   onOpenCustomVectorImporter?: () => void;
   onOpenProjectBundle?: () => void;
   onOpenGhostReference?: () => void;
+  isLiteMode?: boolean;
+  onToggleLiteMode?: () => void;
   userFonts?: CustomUserFont[];
   isMobileStudiosOpen?: boolean;
   onCloseMobileStudios?: () => void;
@@ -130,6 +130,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   onOpenCustomVectorImporter,
   onOpenProjectBundle,
   onOpenGhostReference,
+  isLiteMode = false,
+  onToggleLiteMode,
   userFonts = [],
   isMobileStudiosOpen = false,
   onCloseMobileStudios,
@@ -138,19 +140,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
   const [internalStudiosOpen, setInternalStudiosOpen] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isStudiosOpen = isMobileStudiosOpen || internalStudiosOpen;
   const handleCloseStudios = () => {
     setInternalStudiosOpen(false);
     if (onCloseMobileStudios) onCloseMobileStudios();
-  };
-
-  const toggleAudio = () => {
-    const muted = SoundEngine.toggleMute();
-    setIsMuted(muted);
-    if (!muted) SoundEngine.playSnap();
   };
 
   // Close popup menu when clicked outside
@@ -190,7 +185,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           <select
             value={currentScript}
             onChange={(e) => {
-              SoundEngine.playReedScrape(0.9);
               onScriptChange(e.target.value as CalligraphyScript);
             }}
             className="w-full bg-neutral-900/90 text-amber-300 text-[10px] sm:text-xs font-vazir py-1 sm:py-1.5 px-1.5 sm:px-2 pl-4 sm:pl-5 rounded-xl border border-amber-500/30 hover:border-amber-500/60 focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all cursor-pointer appearance-none shadow-sm truncate mobile-select-compact"
@@ -217,7 +211,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenFontManager && (
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onOpenFontManager();
             }}
             className="hidden sm:flex p-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-850 text-amber-400 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -239,7 +232,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
             <button
               key={mode.id}
               onClick={() => {
-                SoundEngine.playSnap();
                 onLayoutModeChange(mode.id as CanvasLayoutMode);
               }}
               className={`py-1 px-2 rounded-lg transition-all cursor-pointer ${
@@ -254,13 +246,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         </div>
       </div>
 
-      {/* 2. Middle Section: Desktop Guides, History & Sound FX Toggle */}
+      {/* 2. Middle Section: Desktop Guides, History & Lite Mode Toggle */}
       <div className="hidden md:flex items-center gap-1.5 lg:gap-2 shrink-0">
         {/* Undo / Redo */}
         <div className="flex items-center bg-neutral-900/90 p-1 rounded-xl border border-neutral-800 shadow-sm">
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onUndo();
             }}
             disabled={!canUndo}
@@ -271,7 +262,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           </button>
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onRedo();
             }}
             disabled={!canRedo}
@@ -283,7 +273,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           {onOpenHistorySnapshots && (
             <button
               onClick={() => {
-                SoundEngine.playSnap();
                 onOpenHistorySnapshots();
               }}
               className="p-1.5 rounded-lg hover:bg-neutral-800 text-amber-400/90 hover:text-amber-300 transition-all border-r border-neutral-800 pr-1.5 mr-0.5 cursor-pointer"
@@ -298,7 +287,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <div className="flex items-center bg-neutral-900/90 p-1 rounded-xl border border-neutral-800 shadow-sm">
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onToggleGrid();
             }}
             className={`p-1.5 rounded-lg transition-all cursor-pointer ${
@@ -310,7 +298,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           </button>
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onToggleKorsi();
             }}
             className={`p-1.5 rounded-lg transition-all cursor-pointer ${
@@ -322,27 +309,53 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           </button>
         </div>
 
-        {/* Sound FX Audio Toggle */}
-        <button
-          onClick={toggleAudio}
-          className={`p-2 rounded-xl border transition-all cursor-pointer ${
-            !isMuted 
-              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25' 
-              : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:text-neutral-300'
-          }`}
-          title={isMuted ? 'فعال‌سازی جلوه‌های صوتی سنتی تراش قلم و کوبیدن مهر' : 'بی‌صدا کردن جلوه‌های صوتی'}
-        >
-          {!isMuted ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-        </button>
+        {/* High-Performance / Lite Mode for Low-End Devices Toggle */}
+        {onToggleLiteMode && (
+          <button
+            onClick={onToggleLiteMode}
+            className={`flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl border transition-all cursor-pointer font-vazir text-xs font-semibold ${
+              isLiteMode
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-950/40'
+                : 'bg-neutral-900/90 border-neutral-800 text-neutral-400 hover:text-amber-300 hover:border-neutral-700'
+            }`}
+            title={
+              isLiteMode
+                ? 'حالت بهینه‌سازی گوشی‌های ضعیف فعال است (حذف لگ، روان‌سازی شدید)'
+                : 'بهینه‌سازی برای گوشی‌های ضعیف مانند Redmi Note 8 Pro (روان‌سازی و رفع لگ)'
+            }
+          >
+            <Zap className={`w-3.5 h-3.5 ${isLiteMode ? 'text-emerald-400 fill-emerald-400 animate-pulse' : 'text-amber-400'}`} />
+            <span className="text-[11px]">
+              {isLiteMode ? '⚡ حالت سبک (فعال)' : '⚡ بهینه‌سازی گوشی'}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* 3. Right Section: Studios, Mockup, CNC, Certificate, Export */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* Mobile Lite Mode Quick Toggle Button (< md) */}
+        {onToggleLiteMode && (
+          <button
+            onClick={onToggleLiteMode}
+            className={`md:hidden flex items-center gap-1 p-1.5 xs:px-2 rounded-xl border transition-all cursor-pointer text-xs font-bold shrink-0 ${
+              isLiteMode
+                ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60'
+                : 'bg-neutral-900/90 border-neutral-800 text-neutral-400 hover:text-amber-300'
+            }`}
+            title="بهینه‌سازی برای گوشی‌های ضعیف و رفع لگ"
+          >
+            <Zap className={`w-3.5 h-3.5 ${isLiteMode ? 'text-emerald-400 fill-emerald-400' : 'text-amber-400'}`} />
+            <span className="hidden xs:inline text-[10px]">
+              {isLiteMode ? 'سبک' : 'بهینه'}
+            </span>
+          </button>
+        )}
+
         {/* Undo / Redo for Mobile View */}
         <div className="flex md:hidden items-center bg-neutral-900/90 p-0.5 rounded-xl border border-neutral-800">
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onUndo();
             }}
             disabled={!canUndo}
@@ -353,7 +366,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           </button>
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onRedo();
             }}
             disabled={!canRedo}
@@ -368,7 +380,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenReedPen && (
           <button
             onClick={() => {
-              SoundEngine.playReedScrape(0.8);
               onOpenReedPen();
             }}
             className="hidden xl:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-amber-300 text-xs font-vazir py-1.5 px-2.5 rounded-xl border border-amber-500/30 hover:border-amber-500/60 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -382,7 +393,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenTazhibBuilder && (
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onOpenTazhibBuilder();
             }}
             className="hidden xl:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-amber-300 text-xs font-vazir py-1.5 px-2.5 rounded-xl border border-amber-500/30 hover:border-amber-500/60 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -397,7 +407,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenCncLaser && (
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onOpenCncLaser();
             }}
             className="hidden lg:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-emerald-300 text-xs font-vazir py-1.5 px-2 rounded-xl border border-emerald-500/30 hover:border-emerald-500/60 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -412,7 +421,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenMockup && (
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onOpenMockup();
             }}
             className="hidden lg:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-neutral-200 text-xs font-vazir py-1.5 px-2 rounded-xl border border-neutral-800 hover:border-amber-500/40 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -427,7 +435,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenCertificate && (
           <button
             onClick={() => {
-              SoundEngine.playChime();
               onOpenCertificate();
             }}
             className="hidden lg:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-amber-300 text-xs font-vazir py-1.5 px-2 rounded-xl border border-amber-500/30 hover:border-amber-500/60 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -442,7 +449,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {onOpenZenMode && (
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               onOpenZenMode();
             }}
             className="hidden sm:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-neutral-300 hover:text-amber-300 text-xs font-vazir py-1.5 px-2 rounded-xl border border-neutral-800 hover:border-amber-500/40 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -456,7 +462,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {/* Masterpieces & Templates (Desktop) */}
         <button
           onClick={() => {
-            SoundEngine.playSnap();
             onOpenTemplates();
           }}
           className="hidden md:flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-850 text-neutral-200 text-xs font-vazir py-1.5 px-2.5 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-all shadow-sm shrink-0 cursor-pointer"
@@ -469,7 +474,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {/* Mobile All Studios Button (< lg) */}
         <button
           onClick={() => {
-            SoundEngine.playSnap();
             if (onOpenMobileStudios) {
               onOpenMobileStudios();
             } else {
@@ -487,7 +491,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <div className="relative shrink-0" ref={menuRef}>
           <button
             onClick={() => {
-              SoundEngine.playSnap();
               setIsToolsMenuOpen(!isToolsMenuOpen);
             }}
             className="p-1.5 text-neutral-400 hover:text-neutral-200 bg-neutral-900/90 hover:bg-neutral-850 rounded-xl border border-neutral-800 shadow-sm transition-all cursor-pointer"
@@ -501,7 +504,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
             <div className="absolute left-0 top-full mt-2 w-56 bg-neutral-950/98 border border-neutral-700/80 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] p-2 z-50 font-vazir text-xs space-y-1 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150">
               <button
                 onClick={() => {
-                  SoundEngine.playChime();
                   onSaveJson();
                   setIsToolsMenuOpen(false);
                 }}
@@ -512,7 +514,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
               </button>
               <button
                 onClick={() => {
-                  SoundEngine.playSnap();
                   fileInputRef.current?.click();
                   setIsToolsMenuOpen(false);
                 }}
@@ -525,7 +526,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
               {onOpenCertificate && (
                 <button
                   onClick={() => {
-                    SoundEngine.playChime();
                     onOpenCertificate();
                     setIsToolsMenuOpen(false);
                   }}
@@ -539,7 +539,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
               {onOpenCncLaser && (
                 <button
                   onClick={() => {
-                    SoundEngine.playSnap();
                     onOpenCncLaser();
                     setIsToolsMenuOpen(false);
                   }}
@@ -552,7 +551,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
 
               <button
                 onClick={() => {
-                  SoundEngine.playSnap();
                   onNewProject();
                   setIsToolsMenuOpen(false);
                 }}
@@ -576,7 +574,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         {/* Primary Export CTA Button */}
         <button
           onClick={() => {
-            SoundEngine.playChime();
             onOpenExport();
           }}
           className="flex items-center gap-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-bold text-xs font-vazir py-1.5 px-2.5 sm:px-3 rounded-xl shadow-md shadow-amber-950/40 border border-amber-400/50 transition-all shrink-0 active:scale-95 cursor-pointer"
@@ -617,6 +614,43 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
 
             {/* Studio Cards Grid */}
             <div className="grid grid-cols-2 gap-2.5">
+              {/* Lite Mode / Performance Mode Toggle Card */}
+              {onToggleLiteMode && (
+                <button
+                  onClick={() => {
+                    onToggleLiteMode();
+                  }}
+                  className={`col-span-2 p-3.5 rounded-2xl border text-right flex items-center justify-between transition-all active:scale-98 ${
+                    isLiteMode
+                      ? 'bg-emerald-500/20 border-emerald-500/50 shadow-md shadow-emerald-950/40'
+                      : 'bg-neutral-900/90 border-neutral-800 hover:border-amber-500/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                      isLiteMode ? 'bg-emerald-500/30 text-emerald-300' : 'bg-neutral-800 text-amber-400'
+                    }`}>
+                      <Zap className={`w-5 h-5 ${isLiteMode ? 'fill-emerald-400' : ''}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-bold ${isLiteMode ? 'text-emerald-200' : 'text-neutral-200'}`}>
+                          حالت بهینه‌سازی گوشی‌های ضعیف (سبک)
+                        </span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                          isLiteMode ? 'bg-emerald-500/30 text-emerald-300' : 'bg-neutral-800 text-neutral-400'
+                        }`}>
+                          {isLiteMode ? 'فعال' : 'غیرفعال'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-400 mt-0.5">
+                        حذف لگ و تاری‌های پردازشی سنگین، شتاب‌دهی GPU در گوشی‌های میان‌رده و قدیمی
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              )}
+
               {/* Workspace Presets */}
               {onOpenWorkspacePresets && (
                 <button

@@ -63,10 +63,10 @@ import { AppLayoutWrapper } from './components/AppLayoutWrapper';
 import { ToolsPanelTab } from './components/ToolsPanel';
 import { AlternateGlyph } from './data/alternateGlyphs';
 import { CalligraphySnippet } from './data/calligraphySnippets';
-import { SoundEngine } from './utils/soundEngine';
 
 const LOCAL_STORAGE_KEY = 'kelk_calligraphy_project_v1';
 const SNAPSHOTS_STORAGE_KEY = 'kelk_history_snapshots_v1';
+const LITE_MODE_STORAGE_KEY = 'kelk_lite_mode_v1';
 
 export default function App() {
   // Initial clean project (Blank Canvas)
@@ -85,6 +85,34 @@ export default function App() {
     penNibAngle: 63,
     elements: [],
   };
+
+  // State: High-Performance / Lite Mode for lower-end phones (e.g. Redmi Note 8 Pro)
+  const [isLiteMode, setIsLiteMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(LITE_MODE_STORAGE_KEY);
+      if (saved !== null) return JSON.parse(saved);
+      // Auto-detect mobile devices or constrained concurrency
+      if (typeof window !== 'undefined') {
+        const isMobileScreen = window.innerWidth <= 768;
+        const isConstrainedCpu = ('navigator' in window && (navigator.hardwareConcurrency || 4) <= 4);
+        return isMobileScreen || isConstrainedCpu;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return false;
+  });
+
+  const toggleLiteMode = useCallback(() => {
+    setIsLiteMode(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(LITE_MODE_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {}
+      showToast(next ? '⚡ حالت بهینه‌سازی گوشی فعال شد (حذف لگ و تاری‌های سنگین)' : 'حالت گرافیک کامل فعال شد');
+      return next;
+    });
+  }, []);
 
   // State: Project
   const [project, setProject] = useState<KelkProject>(() => {
@@ -416,7 +444,6 @@ export default function App() {
     }
 
     recordHistory();
-    SoundEngine.playSnap();
 
     // If text contains multiple words, split into words. Otherwise, decompose into ligatures!
     const hasSpaces = current.text.trim().includes(' ');
@@ -458,7 +485,6 @@ export default function App() {
   // Insert Calligraphy Snippet (Pre-composed royal verses)
   const handleInsertSnippet = useCallback((snippet: CalligraphySnippet) => {
     recordHistory();
-    SoundEngine.playChime();
     if (snippet.elements && snippet.elements.length > 0) {
       const fullElements: CanvasElement[] = snippet.elements.map((el, idx) => ({
         id: el.id || `snippet_el_${Date.now()}_${idx}`,
@@ -517,7 +543,6 @@ export default function App() {
   // Select Alternate Glyph
   const handleSelectAlternateGlyph = useCallback((glyph: AlternateGlyph) => {
     recordHistory();
-    SoundEngine.playSnap();
     const current = project.elements.find(e => e.id === selectedElementId);
     if (current && current.text && current.text.length <= 2) {
       handleUpdateElement(current.id, { text: glyph.char });
@@ -564,7 +589,6 @@ export default function App() {
     }
 
     recordHistory();
-    SoundEngine.playSnap();
     const welded = weldElements([current, other]);
     setProject(prev => ({
       ...prev,
@@ -1143,6 +1167,8 @@ export default function App() {
           onOpenProjectBundle={() => setIsProjectBundleOpen(true)}
           onOpenGhostReference={() => setIsGhostReferenceOpen(true)}
           userFonts={userFonts}
+          isLiteMode={isLiteMode}
+          onToggleLiteMode={toggleLiteMode}
           isMobileStudiosOpen={isMobileStudiosModalOpen}
           onCloseMobileStudios={handleCloseMobileStudios}
           onOpenMobileStudios={handleOpenMobileStudios}
@@ -1165,6 +1191,7 @@ export default function App() {
             paperTexture={project.paperTexture}
             ebruSettings={ebruSettings}
             korsiGuides={korsiGuides}
+            isLiteMode={isLiteMode}
             backgroundColor={project.backgroundColor}
             frameBorder={project.frameBorder}
             layoutMode={project.layoutMode}
