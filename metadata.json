@@ -1,0 +1,7 @@
+{
+  "name": "کلک استودیو | Kelk Calligraphy Studio",
+  "description": "نرم‌افزار جامع و پیشرفته خوشنویسی، قطعه‌نویسی، چلیپا، سیاه‌مشق و طراحی برداری خطوط نستعلیق، شکسته، ثلث، نسخ، معلی و کوفی با پشتیبانی کامل از فرمت‌های برداری SVG و ابزارهای اندازه‌گیری سنتی",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
