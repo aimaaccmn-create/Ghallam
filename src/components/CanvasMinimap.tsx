@@ -11,7 +11,7 @@ interface CanvasMinimapProps {
   isVisible?: boolean;
 }
 
-export const CanvasMinimap: React.FC<CanvasMinimapProps> = ({
+export const CanvasMinimap: React.FC<CanvasMinimapProps> = React.memo(({
   canvasWidth,
   canvasHeight,
   elements,
@@ -102,4 +102,4 @@ export const CanvasMinimap: React.FC<CanvasMinimapProps> = ({
       </div>
     </div>
   );
-};
+});

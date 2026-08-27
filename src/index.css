@@ -187,6 +187,11 @@
   /* Disable expensive backdrop blur rendering on Mali GPUs */
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  text-shadow: none !important;
+}
+
+.lite-mode {
+  text-rendering: optimizeSpeed !important;
 }
 
 .lite-mode .backdrop-blur-xl,
@@ -194,7 +199,7 @@
 .lite-mode .backdrop-blur-md,
 .lite-mode .backdrop-blur-sm,
 .lite-mode .backdrop-blur-2xl {
-  background-color: rgba(18, 18, 18, 0.98) !important;
+  background-color: #121212 !important;
 }
 
 .lite-mode .gold-foil-active {
@@ -203,14 +208,22 @@
 }
 
 .lite-mode .shadow-2xl,
-.lite-mode .shadow-xl {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+.lite-mode .shadow-xl,
+.lite-mode .shadow-lg {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25) !important;
 }
 
 .lite-mode .canvas-stage-bg {
-  /* Prevent background-filter redraws */
-  contain: layout style paint;
+  contain: strict;
   transform: translate3d(0,0,0);
+  will-change: auto;
+}
+
+.lite-mode [id^="el_"] {
+  will-change: transform;
+  contain: layout style;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .lite-mode .hardware-accelerated {

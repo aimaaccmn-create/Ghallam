@@ -103,6 +103,17 @@ export default function App() {
     return false;
   });
 
+  // Synchronize Lite Mode class with DOM root to immediately eliminate GPU bottlenecks on mobile devices
+  useEffect(() => {
+    if (isLiteMode) {
+      document.documentElement.classList.add('lite-mode');
+      document.body.classList.add('lite-mode');
+    } else {
+      document.documentElement.classList.remove('lite-mode');
+      document.body.classList.remove('lite-mode');
+    }
+  }, [isLiteMode]);
+
   const toggleLiteMode = useCallback(() => {
     setIsLiteMode(prev => {
       const next = !prev;
@@ -393,6 +404,21 @@ export default function App() {
     setProject(prev => ({
       ...prev,
       elements: prev.elements.map(el => (el.id === id ? { ...el, ...updates } : el)),
+    }));
+  }, [recordHistory]);
+
+  // Update Multiple Elements in a single batch (prevents multiple renders during gestures)
+  const handleBatchUpdateElements = useCallback((updates: Array<{ id: string; updates: Partial<CanvasElement> }>, saveHistory: boolean = false) => {
+    if (saveHistory) {
+      recordHistory();
+    }
+    const updateMap = new Map(updates.map(u => [u.id, u.updates]));
+    setProject(prev => ({
+      ...prev,
+      elements: prev.elements.map(el => {
+        const up = updateMap.get(el.id);
+        return up ? { ...el, ...up } : el;
+      }),
     }));
   }, [recordHistory]);
 
@@ -1187,6 +1213,7 @@ export default function App() {
             onGroupElements={handleGroupElements}
             onUngroupElements={handleUngroupElements}
             onUpdateElement={handleUpdateElement}
+            onUpdateBatchElements={handleBatchUpdateElements}
             onRecordHistory={recordHistory}
             paperTexture={project.paperTexture}
             ebruSettings={ebruSettings}

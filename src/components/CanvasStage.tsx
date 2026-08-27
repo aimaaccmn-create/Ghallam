@@ -59,6 +59,7 @@ interface CanvasStageProps {
   onGroupElements?: (ids: string[]) => void;
   onUngroupElements?: (groupId: string) => void;
   onUpdateElement: (id: string, updates: Partial<CanvasElement>, saveHistory?: boolean) => void;
+  onUpdateBatchElements?: (updates: Array<{ id: string; updates: Partial<CanvasElement> }>, saveHistory?: boolean) => void;
   onRecordHistory?: () => void;
   paperTexture: PaperTextureType;
   ebruSettings?: EbruPaperSettings;
@@ -93,6 +94,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
   onGroupElements,
   onUngroupElements,
   onUpdateElement,
+  onUpdateBatchElements,
   onRecordHistory,
   paperTexture,
   ebruSettings,
@@ -160,7 +162,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
   type GestureState = 'IDLE' | 'PANNING' | 'PINCHING' | 'ELEMENT_DRAG' | 'ELEMENT_ROTATE' | 'MARQUEE_SELECT';
   const gestureStateRef = useRef<GestureState>('IDLE');
 
-  // Active dragging ref to eliminate any react state latency during touch / mouse movement
+  // Active dragging ref with Hardware-Accelerated Direct-DOM caches for zero React render latency
+  interface DragTargetCache {
+    id: string;
+    item: CanvasElement;
+    domNode: HTMLElement | null;
+    initialX: number;
+    initialY: number;
+    rotation: number;
+    scaleX: number;
+    scaleY: number;
+    stepSkew: string;
+  }
+
   const dragTrackerRef = useRef<{
     elementId: string;
     startElemX: number;
@@ -169,15 +183,21 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
     pointerStartY: number;
     dragOffsetX: number;
     dragOffsetY: number;
+    targets: DragTargetCache[];
+    lastDeltaX: number;
+    lastDeltaY: number;
   } | null>(null);
 
-  // Active rotation ref
+  // Active rotation ref with Direct-DOM caching
   const rotateTrackerRef = useRef<{
     elementId: string;
+    element: CanvasElement;
+    domNode: HTMLElement | null;
     centerX: number;
     centerY: number;
     initialElemRotation: number;
     initialAngle: number;
+    lastRotation?: number;
   } | null>(null);
 
   const [isDraggingActive, setIsDraggingActive] = useState(false);
@@ -299,7 +319,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedElementId, elements, onUpdateElement, onDeleteElement, onSelectElement, onDuplicateElement]);
 
-  // Move element target coordinates with high-speed O(1) spatial snapping & tandem multi-selection
+  // Move element target coordinates with high-speed O(1) spatial snapping & tandem multi-selection (for keyboard / D-Pad nudge)
   const moveElementTo = useCallback((targetX: number, targetY: number, elementId: string) => {
     const el = elements.find(item => item.id === elementId);
     if (!el) return;
@@ -308,7 +328,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
     let finalY = targetY;
     let activeGuides: SnapGuideLine[] = [];
 
-    if (korsiGuides.enableSnapping) {
+    if (korsiGuides.enableSnapping && !isLiteMode) {
       const snapResult = spatialGridRef.current.computeMagneticSnapping(
         targetX,
         targetY,
@@ -326,9 +346,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
       activeGuides = snapResult.guides;
     }
 
-    if (activeGuides.length > 0 && activeSnapLines.length === 0) {
-      // Magnetic guideline snapped
-    }
     setActiveSnapLines(activeGuides);
 
     const deltaX = finalX - el.x;
@@ -338,32 +355,40 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
 
     // Move all multi-selected elements together if dragging one of them
     if (selectedMultiIds.includes(elementId) && selectedMultiIds.length > 1) {
-      selectedMultiIds.forEach(id => {
-        const item = elements.find(e => e.id === id);
-        if (item && !item.isLocked) {
-          onUpdateElement(id, {
-            x: item.x + deltaX,
-            y: item.y + deltaY,
-          }, false);
-        }
-      });
+      if (onUpdateBatchElements) {
+        const updates = selectedMultiIds.map(id => {
+          const item = elements.find(e => e.id === id);
+          return item && !item.isLocked ? { id, updates: { x: item.x + deltaX, y: item.y + deltaY } } : null;
+        }).filter(Boolean) as Array<{ id: string; updates: Partial<CanvasElement> }>;
+        onUpdateBatchElements(updates, false);
+      } else {
+        selectedMultiIds.forEach(id => {
+          const item = elements.find(e => e.id === id);
+          if (item && !item.isLocked) {
+            onUpdateElement(id, { x: item.x + deltaX, y: item.y + deltaY }, false);
+          }
+        });
+      }
     } else {
       // Move anchored children synchronously (Smart Tashkeel Anchoring)
-      elements.forEach(otherEl => {
-        if (otherEl.parentAnchorId === elementId) {
-          onUpdateElement(otherEl.id, {
-            x: otherEl.x + deltaX,
-            y: otherEl.y + deltaY,
-          }, false);
-        }
-      });
-
-      onUpdateElement(elementId, { x: finalX, y: finalY }, false);
+      const anchored = elements.filter(otherEl => otherEl.parentAnchorId === elementId && !otherEl.isLocked);
+      if (anchored.length > 0 && onUpdateBatchElements) {
+        const updates = [
+          { id: elementId, updates: { x: finalX, y: finalY } },
+          ...anchored.map(a => ({ id: a.id, updates: { x: a.x + deltaX, y: a.y + deltaY } }))
+        ];
+        onUpdateBatchElements(updates, false);
+      } else {
+        anchored.forEach(otherEl => {
+          onUpdateElement(otherEl.id, { x: otherEl.x + deltaX, y: otherEl.y + deltaY }, false);
+        });
+        onUpdateElement(elementId, { x: finalX, y: finalY }, false);
+      }
     }
-  }, [elements, height, width, korsiGuides, selectedMultiIds, onUpdateElement]);
+  }, [elements, height, width, korsiGuides, selectedMultiIds, onUpdateElement, onUpdateBatchElements, isLiteMode]);
 
   // ----------------------------------------------------
-  // Global Window Pointer Move & Up with RequestAnimationFrame (RAF) 60fps throttling
+  // Global Window Pointer Move & Up with RequestAnimationFrame (RAF) 60fps Direct-DOM throttling
   // ----------------------------------------------------
   useEffect(() => {
     const processPointerMove = (e: PointerEvent) => {
@@ -390,20 +415,59 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         return;
       }
 
-      // 2. Handle Element Dragging
+      // 2. Handle Element Dragging via Direct GPU-Accelerated Hardware Translation (ZERO React Render Latency)
       if (dragTrackerRef.current && containerRef.current) {
         const tracker = dragTrackerRef.current;
         const canvasRect = containerRef.current.getBoundingClientRect();
         const px = (e.clientX - canvasRect.left) / zoom;
         const py = (e.clientY - canvasRect.top) / zoom;
 
-        const targetX = Math.round(px - tracker.dragOffsetX);
-        const targetY = Math.round(py - tracker.dragOffsetY);
+        const rawTargetX = Math.round(px - tracker.dragOffsetX);
+        const rawTargetY = Math.round(py - tracker.dragOffsetY);
 
-        moveElementTo(targetX, targetY, tracker.elementId);
+        let finalX = rawTargetX;
+        let finalY = rawTargetY;
+        let activeGuides: SnapGuideLine[] = [];
+
+        if (korsiGuides.enableSnapping && !isLiteMode) {
+          const snapResult = spatialGridRef.current.computeMagneticSnapping(
+            rawTargetX,
+            rawTargetY,
+            tracker.elementId,
+            width,
+            height,
+            korsiGuides.snapDistance || 12,
+            korsiGuides.showVasat,
+            korsiGuides.showMabda,
+            korsiGuides.showForood,
+            selectedMultiIds
+          );
+          finalX = snapResult.finalX;
+          finalY = snapResult.finalY;
+          activeGuides = snapResult.guides;
+        }
+
+        setActiveSnapLines(activeGuides);
+
+        const deltaX = finalX - tracker.startElemX;
+        const deltaY = finalY - tracker.startElemY;
+
+        tracker.lastDeltaX = deltaX;
+        tracker.lastDeltaY = deltaY;
+
+        // Apply instant direct DOM style transformation without triggering React re-renders
+        const len = tracker.targets.length;
+        for (let i = 0; i < len; i++) {
+          const t = tracker.targets[i];
+          if (t.domNode) {
+            t.domNode.style.transform = `translate3d(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px), 0) rotate(${t.rotation}deg) scale(${t.scaleX}, ${t.scaleY}) ${t.stepSkew}`;
+            t.domNode.style.zIndex = '9999';
+          }
+        }
+        return;
       }
 
-      // 3. Handle Rotating
+      // 3. Handle Rotating via Direct Hardware Translation
       if (rotateTrackerRef.current && containerRef.current) {
         const tracker = rotateTrackerRef.current;
         const canvasRect = containerRef.current.getBoundingClientRect();
@@ -416,8 +480,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         const currentAngle = (radians * 180) / Math.PI;
         const deltaAngle = currentAngle - tracker.initialAngle;
         const newRotation = Math.round(tracker.initialElemRotation + deltaAngle);
+        tracker.lastRotation = newRotation;
 
-        onUpdateElement(tracker.elementId, { rotation: newRotation }, false);
+        if (tracker.domNode && tracker.element) {
+          const el = tracker.element;
+          const verticalScale = el.verticalKashida || 1;
+          const stepSkew = el.stepKashidaAngle ? `skewY(${el.stepKashidaAngle}deg)` : '';
+          tracker.domNode.style.transform = `translate3d(-50%, -50%, 0) rotate(${newRotation}deg) scale(${el.scaleX}, ${el.scaleY * verticalScale}) ${stepSkew}`;
+          tracker.domNode.style.zIndex = '9999';
+        }
+        return;
       }
     };
 
@@ -452,15 +524,62 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         rafIdRef.current = null;
       }
       cancelLongPress();
+
       if (dragTrackerRef.current) {
+        const tracker = dragTrackerRef.current;
+        const deltaX = tracker.lastDeltaX || 0;
+        const deltaY = tracker.lastDeltaY || 0;
+
+        // 1. Reset inline overrides on all manipulated DOM nodes
+        const len = tracker.targets.length;
+        for (let i = 0; i < len; i++) {
+          const t = tracker.targets[i];
+          if (t.domNode) {
+            t.domNode.style.transform = '';
+            t.domNode.style.zIndex = '';
+          }
+        }
+
+        // 2. Commit final coordinates once to React State
+        if (deltaX !== 0 || deltaY !== 0) {
+          if (onUpdateBatchElements && tracker.targets.length > 1) {
+            const updates = tracker.targets.map(t => ({
+              id: t.id,
+              updates: {
+                x: t.initialX + deltaX,
+                y: t.initialY + deltaY,
+              },
+            }));
+            onUpdateBatchElements(updates, false);
+          } else {
+            for (let i = 0; i < len; i++) {
+              const t = tracker.targets[i];
+              onUpdateElement(t.id, {
+                x: t.initialX + deltaX,
+                y: t.initialY + deltaY,
+              }, false);
+            }
+          }
+        }
+
         dragTrackerRef.current = null;
         setIsDraggingActive(false);
         setActiveSnapLines([]);
       }
+
       if (rotateTrackerRef.current) {
+        const tracker = rotateTrackerRef.current;
+        if (tracker.domNode) {
+          tracker.domNode.style.transform = '';
+          tracker.domNode.style.zIndex = '';
+        }
+        if (tracker.lastRotation !== undefined && tracker.lastRotation !== tracker.initialElemRotation) {
+          onUpdateElement(tracker.elementId, { rotation: tracker.lastRotation }, false);
+        }
         rotateTrackerRef.current = null;
         setIsRotatingActive(false);
       }
+
       if (marquee) {
         setMarquee(null);
       }
@@ -478,7 +597,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
       window.removeEventListener('pointerup', handleGlobalPointerUp);
       window.removeEventListener('pointercancel', handleGlobalPointerUp);
     };
-  }, [zoom, moveElementTo, onUpdateElement, marquee, elements, cancelLongPress]);
+  }, [zoom, moveElementTo, onUpdateElement, onUpdateBatchElements, marquee, elements, cancelLongPress, isLiteMode, width, height, korsiGuides, selectedMultiIds]);
 
   // Pointer Down on Canvas Stage Background (starts marquee box selection)
   const handleStagePointerDown = (e: React.PointerEvent) => {
@@ -534,8 +653,46 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
 
     const canvasRect = containerRef.current?.getBoundingClientRect();
     if (canvasRect) {
+      try {
+        (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+      } catch (err) {}
+
       const px = (e.clientX - canvasRect.left) / zoom;
       const py = (e.clientY - canvasRect.top) / zoom;
+
+      // Collect all targets that will move together
+      let movingIds: string[] = [element.id];
+      if (selectedMultiIds.includes(element.id) && selectedMultiIds.length > 1) {
+        movingIds = selectedMultiIds;
+      } else {
+        // Synchronously collect anchored elements
+        elements.forEach(otherEl => {
+          if (otherEl.parentAnchorId === element.id) {
+            movingIds.push(otherEl.id);
+          }
+        });
+      }
+
+      const targets: DragTargetCache[] = [];
+      movingIds.forEach(id => {
+        const item = elements.find(elItem => elItem.id === id);
+        if (item && !item.isLocked) {
+          const domNode = document.getElementById(`el_${item.id}`);
+          const verticalScale = item.verticalKashida || 1;
+          const stepSkew = item.stepKashidaAngle ? `skewY(${item.stepKashidaAngle}deg)` : '';
+          targets.push({
+            id: item.id,
+            item,
+            domNode,
+            initialX: item.x,
+            initialY: item.y,
+            rotation: item.rotation || 0,
+            scaleX: item.scaleX || 1,
+            scaleY: (item.scaleY || 1) * verticalScale,
+            stepSkew,
+          });
+        }
+      });
 
       dragTrackerRef.current = {
         elementId: element.id,
@@ -545,6 +702,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         pointerStartY: py,
         dragOffsetX: px - element.x,
         dragOffsetY: py - element.y,
+        targets,
+        lastDeltaX: 0,
+        lastDeltaY: 0,
       };
       setIsDraggingActive(true);
     }
@@ -567,6 +727,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
   const handleRotatePointerDown = (e: React.PointerEvent, el: CanvasElement) => {
     cancelLongPress();
     e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    } catch (err) {}
     setIsRotatingActive(true);
     onRecordHistory?.();
 
@@ -577,13 +740,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
       const dx = px - el.x;
       const dy = py - el.y;
       const initialAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+      const domNode = document.getElementById(`el_${el.id}`);
 
       rotateTrackerRef.current = {
         elementId: el.id,
+        element: el,
+        domNode,
         centerX: el.x,
         centerY: el.y,
         initialElemRotation: el.rotation || 0,
         initialAngle,
+        lastRotation: el.rotation || 0,
       };
     }
   };
@@ -752,7 +919,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
   return (
     <div 
       ref={viewportRef}
-      className="flex-1 h-full w-full overflow-auto bg-neutral-900 flex items-center justify-center p-2 sm:p-6 md:p-8 relative select-none"
+      className="flex-1 h-full w-full overflow-hidden bg-neutral-900 flex items-center justify-center p-2 sm:p-6 md:p-8 relative select-none touch-none overscroll-none"
       onTouchStart={handleTouchStartViewport}
       onTouchMove={handleTouchMoveViewport}
       onTouchEnd={handleTouchEndViewport}
