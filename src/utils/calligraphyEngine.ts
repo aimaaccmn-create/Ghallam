@@ -8,7 +8,7 @@ import {
   EbruPaperSettings,
   CustomUserFont
 } from '../types/calligraphy';
-import { TAZHIB_COLLECTION, TAZHIB_MAP } from '../data/tazhibAssets';
+import { TAZHIB_COLLECTION, TAZHIB_MAP, DOT_PRESETS_MAP } from '../data/tazhibAssets';
 import { FontLifecycleManager, FontStorageEngine } from './fontManager';
 
 // Font mapping for each script with category metadata for rich browser
@@ -491,8 +491,11 @@ export function normalizePersianText(
 
   let normalized = text;
 
-  // 1. Replace Arabic Yeh (ي, ى) with Persian Yeh (ی)
-  normalized = normalized.replace(/[\u064A\u0649]/g, 'ی');
+  // 0. Strip invisible garbage, control characters, soft hyphens and LTR/RTL mark overrides that break cursive nastaliq
+  normalized = normalized.replace(/[\u200B-\u200F\uFEFF\u00AD\u202A-\u202E]/g, '');
+
+  // 1. Replace Arabic Yeh (ي, ى, ۍ, ې) with Persian Yeh (ی)
+  normalized = normalized.replace(/[\u064A\u0649\u06CD\u06D0]/g, 'ی');
 
   // 2. Replace Arabic Kaf (ك) with Persian Kaf (ک)
   normalized = normalized.replace(/[\u0643]/g, 'ک');
@@ -514,6 +517,8 @@ export function normalizePersianText(
 
   // 6. Clean duplicate spaces and standardize ZWNJ (نیم‌فاصله)
   if (options.cleanSpaces !== false) {
+    // Replace non-breaking spaces with standard space
+    normalized = normalized.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
     // Replace multiple consecutive spaces with a single space
     normalized = normalized.replace(/ +/g, ' ');
     // Remove spaces around ZWNJ
@@ -834,6 +839,133 @@ export function decomposePersianWord(
   });
 
   return elements;
+}
+
+// Classical Persian Calligraphy Dot Metadata for Decomposition & Detachment
+export interface PersianCharDotMeta {
+  dotlessChar: string;
+  dotPreset: string;
+  dotChar: string;
+  name: string;
+  yOffsetFactor: number;
+}
+
+export const PERSIAN_DOT_METADATA: Record<string, PersianCharDotMeta> = {
+  'ب': { dotlessChar: 'ٮ', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ب', yOffsetFactor: 0.44 },
+  'پ': { dotlessChar: 'ٮ', dotPreset: 'triple_inverted_dots', dotChar: '⁂', name: 'سه نقطه پ', yOffsetFactor: 0.52 },
+  'ت': { dotlessChar: 'ٮ', dotPreset: 'double_nastaliq_dots', dotChar: '◆◆', name: 'دو نقطه ت', yOffsetFactor: -0.46 },
+  'ث': { dotlessChar: 'ٮ', dotPreset: 'triple_pyramid_dots', dotChar: '⁂', name: 'سه نقطه ث', yOffsetFactor: -0.54 },
+  'ج': { dotlessChar: 'ح', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ج', yOffsetFactor: 0.28 },
+  'چ': { dotlessChar: 'ح', dotPreset: 'triple_inverted_dots', dotChar: '⁂', name: 'سه نقطه چ', yOffsetFactor: 0.38 },
+  'خ': { dotlessChar: 'ح', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه خ', yOffsetFactor: -0.50 },
+  'ذ': { dotlessChar: 'د', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ذ', yOffsetFactor: -0.44 },
+  'ز': { dotlessChar: 'ر', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ز', yOffsetFactor: -0.44 },
+  'ژ': { dotlessChar: 'ر', dotPreset: 'triple_pyramid_dots', dotChar: '⁂', name: 'سه نقطه ژ', yOffsetFactor: -0.52 },
+  'ش': { dotlessChar: 'س', dotPreset: 'triple_pyramid_dots', dotChar: '⁂', name: 'سه نقطه ش', yOffsetFactor: -0.54 },
+  'ض': { dotlessChar: 'ص', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ض', yOffsetFactor: -0.48 },
+  'ظ': { dotlessChar: 'ط', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ظ', yOffsetFactor: -0.52 },
+  'غ': { dotlessChar: 'ع', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه غ', yOffsetFactor: -0.48 },
+  'ف': { dotlessChar: 'ڡ', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ف', yOffsetFactor: -0.48 },
+  'ق': { dotlessChar: 'ٯ', dotPreset: 'double_nastaliq_dots', dotChar: '◆◆', name: 'دو نقطه ق', yOffsetFactor: -0.50 },
+  'ن': { dotlessChar: 'ں', dotPreset: 'single_nastaliq_dot', dotChar: '◆', name: 'نقطه ن', yOffsetFactor: -0.12 },
+  'ئ': { dotlessChar: 'ى', dotPreset: 'single_thuluth_dot', dotChar: 'ء', name: 'همزه ئ', yOffsetFactor: -0.48 },
+};
+
+/**
+ * Detach all dots from a Persian word or text element, converting the base text to dotless
+ * and creating individual, movable, rotatable CanvasElement dot objects with precise placement.
+ */
+export function detachDotsFromElement(element: CanvasElement): {
+  updatedBase: CanvasElement;
+  dotElements: CanvasElement[];
+} {
+  const originalText = element.text || '';
+  if (!originalText) {
+    return { updatedBase: element, dotElements: [] };
+  }
+
+  const chars = Array.from(originalText);
+  let dotlessText = '';
+  const dotElements: CanvasElement[] = [];
+
+  const charCount = chars.length;
+  const totalSpan = Math.max(20, (charCount - 1) * (element.fontSize * 0.42));
+  const startX = element.x + (totalSpan / 2);
+  const stepX = charCount > 1 ? totalSpan / (charCount - 1) : 0;
+
+  chars.forEach((char, index) => {
+    // Check if char has dots
+    const meta = PERSIAN_DOT_METADATA[char];
+    if (meta) {
+      dotlessText += meta.dotlessChar;
+
+      // Calculate relative X position in RTL order
+      const charX = Math.round(startX - (index * stepX));
+      const charY = Math.round(element.y + (meta.yOffsetFactor * element.fontSize));
+
+      const dotEl: CanvasElement = {
+        id: `dot_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 4)}`,
+        name: meta.name,
+        type: 'dot',
+        dotPreset: meta.dotPreset,
+        text: meta.dotChar,
+        dotLetterTarget: char,
+        parentAnchorId: element.id,
+        x: charX,
+        y: charY,
+        fontSize: Math.round(element.fontSize * 0.45),
+        fontFamily: element.fontFamily || 'IranNastaliq, serif',
+        color: element.color || '#18181b',
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        opacity: 1,
+        zIndex: (element.zIndex || 10) + 1 + index,
+      };
+
+      dotElements.push(dotEl);
+    } else if (char === 'ی' || char === 'ي') {
+      // If medial or initial 'ی' (not at end of word), it has 2 dots below
+      const isInitialOrMedial = index < chars.length - 1 && chars[index + 1] !== ' ' && chars[index + 1] !== '\u200c';
+      if (isInitialOrMedial) {
+        dotlessText += 'ٮ';
+        const charX = Math.round(startX - (index * stepX));
+        const charY = Math.round(element.y + (0.44 * element.fontSize));
+
+        dotElements.push({
+          id: `dot_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 4)}`,
+          name: 'دو نقطه ی',
+          type: 'dot',
+          dotPreset: 'double_nastaliq_dots',
+          text: '◆◆',
+          dotLetterTarget: char,
+          parentAnchorId: element.id,
+          x: charX,
+          y: charY,
+          fontSize: Math.round(element.fontSize * 0.45),
+          fontFamily: element.fontFamily || 'IranNastaliq, serif',
+          color: element.color || '#18181b',
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          opacity: 1,
+          zIndex: (element.zIndex || 10) + 1 + index,
+        });
+      } else {
+        dotlessText += 'ى';
+      }
+    } else {
+      dotlessText += char;
+    }
+  });
+
+  const updatedBase: CanvasElement = {
+    ...element,
+    text: dotlessText,
+    dotArrangement: 'hidden',
+  };
+
+  return { updatedBase, dotElements };
 }
 
 // Mathematical calculation for Persian Reed Pen (قلم نی خیزران)
@@ -1322,6 +1454,33 @@ export function exportToSvg(project: KelkProject): string {
         `;
       }
 
+      // 3.5 Calligraphic Dots / Nuqta (نقطه‌های خوشنویسی)
+      if (el.type === 'dot') {
+        const dotPreset = el.dotPreset ? DOT_PRESETS_MAP.get(el.dotPreset) : null;
+        const dotSize = Math.max(18, Math.round(el.fontSize * 0.9));
+        const fillVal = el.goldEffect ? '#d97706' : (el.color || '#18181b');
+
+        if (dotPreset) {
+          return `
+            <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})" opacity="${el.opacity}">
+              <g transform="translate(${-dotSize / 2}, ${-dotSize / 2})">
+                ${dotPreset.svg.replace('width="24"', `width="${dotSize}"`).replace('height="24"', `height="${dotSize}"`).replace(/fill="currentColor"/g, `fill="${fillVal}"`)}
+              </g>
+            </g>
+          `;
+        }
+
+        return `
+          <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})" opacity="${el.opacity}">
+            <g transform="translate(${-dotSize / 2}, ${-dotSize / 2})">
+              <svg width="${dotSize}" height="${dotSize}" viewBox="0 0 30 30">
+                <polygon points="15,2 28,15 15,28 2,15" fill="${fillVal}" />
+              </svg>
+            </g>
+          </g>
+        `;
+      }
+
       // 4. Calligraphy Text / Word / Letter / Tashkeel
       const textToRender = el.kashidaLevel ? applyKashida(el.text || '', el.kashidaLevel) : (el.text || '');
       const filterAttr = el.shadowBlur ? `filter="drop-shadow(${el.shadowOffsetX || 2}px ${el.shadowOffsetY || 2}px ${el.shadowBlur || 4}px ${el.shadowColor || '#000000'})"` : '';
@@ -1651,9 +1810,18 @@ export async function renderProjectToCanvas(
 
   onProgress?.(20, 'در حال رندر کادرها و بافت پس‌زمینه...');
   const { canvasWidth, canvasHeight, elements, backgroundColor, paperTexture, frameBorder, ebruSettings } = project;
+  
+  // High-DPI canvas allocation with safety clamping (prevents browser/mobile canvas memory crash)
+  const MAX_SAFE_CANVAS_DIMENSION = 8192;
+  const effectiveScale = Math.min(
+    scale,
+    MAX_SAFE_CANVAS_DIMENSION / Math.max(canvasWidth, 1),
+    MAX_SAFE_CANVAS_DIMENSION / Math.max(canvasHeight, 1)
+  );
+
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(canvasWidth * scale);
-  canvas.height = Math.round(canvasHeight * scale);
+  canvas.width = Math.round(canvasWidth * effectiveScale);
+  canvas.height = Math.round(canvasHeight * effectiveScale);
 
   const ctx = canvas.getContext('2d', { alpha: true });
   if (!ctx) {
@@ -1661,7 +1829,7 @@ export async function renderProjectToCanvas(
   }
 
   // Scale for ultra-high DPI output (1x, 2x, 4K)
-  ctx.scale(scale, scale);
+  ctx.scale(effectiveScale, effectiveScale);
 
   // 1. Draw Background
   if (!transparentBg) {

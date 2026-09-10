@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, X, Check, Sliders, Wand2, Compass, Move, Anchor, Link, Unlink, Copy, Scissors } from 'lucide-react';
+import { Sparkles, X, Check, Sliders, Wand2, Compass, Move, Anchor, Link, Unlink, Copy, Scissors, Diamond } from 'lucide-react';
 import { CanvasElement } from '../types/calligraphy';
 
 interface ContextualVariantPopoverProps {
@@ -7,6 +7,7 @@ interface ContextualVariantPopoverProps {
   allElements: CanvasElement[];
   onUpdateElement: (id: string, updates: Partial<CanvasElement>) => void;
   onWeldWithAdjacent?: (primaryId: string) => void;
+  onDetachDots?: (id?: string) => void;
   onCopyVectorClipboard?: () => void;
   onClose?: () => void;
 }
@@ -125,6 +126,7 @@ export const ContextualVariantPopover: React.FC<ContextualVariantPopoverProps> =
   allElements,
   onUpdateElement,
   onWeldWithAdjacent,
+  onDetachDots,
   onCopyVectorClipboard,
   onClose,
 }) => {
@@ -382,7 +384,7 @@ export const ContextualVariantPopover: React.FC<ContextualVariantPopoverProps> =
         </div>
       )}
 
-      {/* Tab 3: Kashida Dot Units */}
+      {/* Tab 3: Kashida Dot Units & Free Nuqta Manipulation */}
       {activeTab === 'kashida_dots' && (
         <div className="space-y-3">
           <p className="text-xs text-neutral-300">
@@ -407,6 +409,22 @@ export const ContextualVariantPopover: React.FC<ContextualVariantPopoverProps> =
               </button>
             ))}
           </div>
+
+          {/* Quick Detach Dots to Independent Movable Elements */}
+          {onDetachDots && (
+            <div className="pt-2 border-t border-neutral-800">
+              <button
+                onClick={() => {
+                  onDetachDots(element.id);
+                  if (onClose) onClose();
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-700/30 hover:from-amber-600/50 hover:to-amber-700/50 text-amber-300 border border-amber-500/50 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98"
+              >
+                <Diamond className="w-4 h-4 text-amber-400" />
+                <span>⚡ استخراج و جداسازی تمام نقطه‌ها به المان‌های مستقل قابل جابجایی</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

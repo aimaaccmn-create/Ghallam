@@ -204,6 +204,8 @@ export interface CanvasElement {
   
   // Traditional Dot-Unit Kashida (3, 5, 7, 9, 11, 13 Nuqta)
   dotKashidaUnits?: number;
+  dotPreset?: string;
+  dotLetterTarget?: string;
   
   // Welding / Ligature Joining
   isWelded?: boolean;

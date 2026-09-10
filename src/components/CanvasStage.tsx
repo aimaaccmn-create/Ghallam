@@ -18,7 +18,7 @@ import {
   transformTextForDotArrangement, 
   generateAdvancedCurvePath 
 } from '../utils/calligraphyEffects';
-import { TAZHIB_COLLECTION, TAZHIB_MAP } from '../data/tazhibAssets';
+import { TAZHIB_COLLECTION, TAZHIB_MAP, DOT_PRESETS_MAP } from '../data/tazhibAssets';
 import { DigitalRuler } from './DigitalRuler';
 import { MagneticGuidesOverlay } from './MagneticGuidesOverlay';
 import { CanvasMinimap } from './CanvasMinimap';
@@ -990,6 +990,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
               <img
                 src={ghostReference.url}
                 alt="Ghost Reference"
+                decoding="async"
+                loading="lazy"
+                referrerPolicy="no-referrer"
                 className="pointer-events-none max-w-none shadow-sm"
               />
             </div>
@@ -1313,6 +1316,40 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                       );
                     })()}
                   </div>
+                ) : el.type === 'dot' ? (
+                  // 3.5 Classical Calligraphic Dot / Nuqta
+                  (() => {
+                    const preset = el.dotPreset ? DOT_PRESETS_MAP.get(el.dotPreset) : null;
+                    const dotSize = Math.max(18, Math.round(el.fontSize * 0.9));
+                    const dotColor = el.goldEffect ? '#d97706' : (el.color || '#18181b');
+
+                    if (preset) {
+                      return (
+                        <div 
+                          style={{ width: `${dotSize}px`, height: `${dotSize}px` }} 
+                          className="flex items-center justify-center pointer-events-none select-none drop-shadow-sm"
+                        >
+                          <div 
+                            className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                            style={{ color: dotColor }}
+                            dangerouslySetInnerHTML={{ __html: preset.svg }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    // Classical 63-degree diamond Nastaliq Nuqta by default
+                    return (
+                      <div 
+                        style={{ width: `${dotSize}px`, height: `${dotSize}px` }} 
+                        className="flex items-center justify-center pointer-events-none select-none drop-shadow-sm"
+                      >
+                        <svg viewBox="0 0 30 30" className="w-full h-full">
+                          <polygon points="15,2 28,15 15,28 2,15" fill={dotColor} />
+                        </svg>
+                      </div>
+                    );
+                  })()
                 ) : el.curveType && el.curveType !== 'none' ? (
                   // 4. Curved Text along SVG Path with Advanced Curves
                   (() => {

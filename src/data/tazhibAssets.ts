@@ -146,6 +146,12 @@ export const DOT_PRESETS: CalligraphyDotPreset[] = [
     svg: `<svg viewBox="0 0 40 40" width="32" height="32"><polygon points="20,2 30,12 20,22 10,12" fill="currentColor"/><polygon points="10,18 20,28 10,38 2,28" fill="currentColor"/><polygon points="30,18 38,28 30,38 22,28" fill="currentColor"/></svg>`
   },
   {
+    id: 'triple_inverted_dots',
+    name: 'سه نقطه هرمی وارونه زیرین',
+    description: 'سه نقطه زیرین حروف پ و چ',
+    svg: `<svg viewBox="0 0 40 40" width="32" height="32"><polygon points="10,2 20,12 10,22 2,12" fill="currentColor"/><polygon points="30,2 38,12 30,22 22,12" fill="currentColor"/><polygon points="20,18 30,28 20,38 10,28" fill="currentColor"/></svg>`
+  },
+  {
     id: 'thuluth_vertical_dots',
     name: 'دو نقطه عمودی ثلث',
     description: 'دو نقطه متوالی خط ثلث',
@@ -156,8 +162,25 @@ export const DOT_PRESETS: CalligraphyDotPreset[] = [
     name: 'نقطه پرتابی شکسته (خطی)',
     description: 'نقطه کشیده و سرعتی شیوه شکسته',
     svg: `<svg viewBox="0 0 40 20" width="32" height="16"><path d="M 5,5 Q 20,2 35,12 Q 20,18 5,5 Z" fill="currentColor"/></svg>`
+  },
+  {
+    id: 'single_kufi_square_dot',
+    name: 'نقطه مربعی خط کوفی',
+    description: 'نقطه هندسی زاویه‌دار کتیبه‌ای کوفی',
+    svg: `<svg viewBox="0 0 30 30" width="24" height="24"><rect x="4" y="4" width="22" height="22" rx="2" fill="currentColor"/></svg>`
+  },
+  {
+    id: 'single_thuluth_dot',
+    name: 'تک نقطه مثلثی ثلث و محقق',
+    description: 'نقطه تیز و کشیده شیوه اقلام سته',
+    svg: `<svg viewBox="0 0 30 30" width="24" height="24"><polygon points="15,2 27,24 3,24" fill="currentColor"/></svg>`
   }
 ];
+
+export const DOT_PRESETS_MAP = new Map<string, CalligraphyDotPreset>();
+DOT_PRESETS.forEach(dp => {
+  DOT_PRESETS_MAP.set(dp.id, dp);
+});
 
 export const TAZHIB_MAP = new Map<string, TazhibItem>();
 TAZHIB_COLLECTION.forEach(item => {

@@ -23,7 +23,8 @@ import {
   loadAllSavedUserFonts,
   saveUserFontsToStorage,
   splitTextIntoWords,
-  decomposePersianWord
+  decomposePersianWord,
+  detachDotsFromElement
 } from './utils/calligraphyEngine';
 import { 
   FontLifecycleManager, 
@@ -322,9 +323,25 @@ export default function App() {
     elementsRef.current = project.elements;
   }, [project.elements]);
 
-  // Record history snapshot before mutating elements
-  const recordHistory = useCallback(() => {
-    setHistory(prev => [...prev.slice(-30), elementsRef.current]);
+  // Debounce ref to prevent recording hundreds of redundant frames during continuous slider drags
+  const lastHistoryRecordTimeRef = useRef<number>(0);
+
+  // Maximum undo history depth to prevent memory explosions on mobile and long sessions
+  const MAX_HISTORY_STEPS = 20;
+
+  // Record history snapshot before mutating elements (with safety debounce and max cap)
+  const recordHistory = useCallback((force: boolean = false) => {
+    const now = Date.now();
+    if (!force && now - lastHistoryRecordTimeRef.current < 250) {
+      return; // Skip consecutive sub-second micro changes to save memory and CPU
+    }
+    lastHistoryRecordTimeRef.current = now;
+
+    setHistory(prev => {
+      const currentClone = JSON.parse(JSON.stringify(elementsRef.current));
+      const trimmed = prev.slice(-(MAX_HISTORY_STEPS - 1));
+      return [...trimmed, currentClone];
+    });
     setRedoStack([]);
   }, []);
 
@@ -332,7 +349,7 @@ export default function App() {
   const handleUndo = useCallback(() => {
     if (history.length === 0) return;
     const previous = history[history.length - 1];
-    setRedoStack(prev => [elementsRef.current, ...prev]);
+    setRedoStack(prev => [JSON.parse(JSON.stringify(elementsRef.current)), ...prev.slice(0, MAX_HISTORY_STEPS)]);
     setHistory(prev => prev.slice(0, prev.length - 1));
     setProject(prev => ({ ...prev, elements: previous }));
   }, [history]);
@@ -341,7 +358,7 @@ export default function App() {
   const handleRedo = useCallback(() => {
     if (redoStack.length === 0) return;
     const next = redoStack[0];
-    setHistory(prev => [...prev, elementsRef.current]);
+    setHistory(prev => [...prev.slice(-(MAX_HISTORY_STEPS - 1)), JSON.parse(JSON.stringify(elementsRef.current))]);
     setRedoStack(prev => prev.slice(1));
     setProject(prev => ({ ...prev, elements: next }));
   }, [redoStack]);
@@ -444,12 +461,13 @@ export default function App() {
     }
   }, [recordHistory]);
 
-  // Delete Element
+  // Delete Element (with smart cascading of child detached dots)
   const handleDeleteElement = useCallback((id: string) => {
-    recordHistory();
+    recordHistory(true);
     setProject(prev => ({
       ...prev,
-      elements: prev.elements.filter(el => el.id !== id),
+      // Delete target element AND any detached dots or diacritics anchored to it
+      elements: prev.elements.filter(el => el.id !== id && el.parentAnchorId !== id),
     }));
     if (selectedElementId === id) {
       setSelectedElementId(null);
@@ -506,6 +524,39 @@ export default function App() {
     } else {
       showToast('تفکیک این متن مقدور نبود');
     }
+  }, [selectedElementId, project.elements, recordHistory]);
+
+  // Detach all dots from Persian word or element into freely movable dot elements
+  const handleDetachDots = useCallback((elementId?: string) => {
+    const targetId = elementId || selectedElementId;
+    if (!targetId) {
+      showToast('لطفاً یک کلمه یا متن را برای جداسازی نقطه‌ها انتخاب کنید');
+      return;
+    }
+    const current = project.elements.find(e => e.id === targetId);
+    if (!current || !current.text) {
+      showToast('المان انتخاب شده فاقد متن است');
+      return;
+    }
+
+    const { updatedBase, dotElements } = detachDotsFromElement(current);
+    if (!dotElements || dotElements.length === 0) {
+      showToast('این کلمه فاقد نقطه است یا قبلاً نقطه‌های آن تفکیک شده است');
+      return;
+    }
+
+    recordHistory();
+
+    setProject(prev => ({
+      ...prev,
+      elements: [
+        ...prev.elements.map(e => e.id === targetId ? updatedBase : e),
+        ...dotElements,
+      ],
+    }));
+
+    setSelectedElementId(dotElements[0].id);
+    showToast(`${dotElements.length} نقطه با موفقیت جدا شد و اکنون آزادانه قابل جابجایی با ماوس یا کلیدها است`);
   }, [selectedElementId, project.elements, recordHistory]);
 
   // Insert Calligraphy Snippet (Pre-composed royal verses)
@@ -1133,6 +1184,9 @@ export default function App() {
   const handleDirectSplitSelected = useCallback(() => {
     handleDirectSplit(selectedElementId || undefined);
   }, [handleDirectSplit, selectedElementId]);
+  const handleDetachDotsSelected = useCallback(() => {
+    handleDetachDots(selectedElementId || undefined);
+  }, [handleDetachDots, selectedElementId]);
 
   const selectedElement = project.elements.find(el => el.id === selectedElementId) || null;
 
@@ -1247,6 +1301,7 @@ export default function App() {
               allElements={project.elements}
               onUpdateElement={handleUpdateElement}
               onWeldWithAdjacent={handleWeldAdjacent}
+              onDetachDots={handleDetachDots}
               onCopyVectorClipboard={handleCopyVectorClipboard}
               onClose={() => setIsContextualVariantsOpen(false)}
             />
@@ -1289,6 +1344,7 @@ export default function App() {
           onOpenEbruStudio={handleOpenEbruStudio}
           onOpenSplitWord={handleOpenSplitWord}
           onDirectSplit={handleDirectSplitSelected}
+          onDetachDots={handleDetachDots}
           isDigitalRulerActive={isDigitalRulerOpen}
           onToggleDigitalRuler={handleToggleDigitalRuler}
           onOpenFontManager={handleOpenFontManager}
@@ -1306,6 +1362,7 @@ export default function App() {
           onDeleteElement={handleDeleteElement}
           onDuplicateElement={handleDuplicateElement}
           onDirectSplit={handleDirectSplitSelected}
+          onDetachDots={handleDetachDotsSelected}
           onOpenSplitWord={handleOpenSplitWord}
           onOpenContextualVariants={() => setIsContextualVariantsOpen(true)}
           onWeldAdjacent={handleWeldAdjacent}

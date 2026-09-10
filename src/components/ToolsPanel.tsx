@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Type, 
   Sparkles, 
@@ -8,6 +8,7 @@ import {
   Copy, 
   Sliders, 
   Plus, 
+  Minus,
   Scissors, 
   PenTool, 
   Orbit, 
@@ -16,8 +17,16 @@ import {
   X,
   Split,
   Sparkle,
-  Paintbrush
+  Paintbrush,
+  Diamond,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  Move,
+  RotateCw
 } from 'lucide-react';
+import { ColorWheelPicker } from './ColorWheelPicker';
 import { 
   CalligraphyScript, 
   CanvasElement, 
@@ -42,6 +51,7 @@ import {
 import { 
   CALLIGRAPHY_DIACRITICS, 
   DOT_PRESETS, 
+  DOT_PRESETS_MAP,
   TAZHIB_COLLECTION 
 } from '../data/tazhibAssets';
 import { TEXTURE_FILL_PRESETS } from '../utils/calligraphyEffects';
@@ -87,6 +97,7 @@ interface ToolsPanelProps {
   onToggleDigitalRuler?: () => void;
   onOpenFontManager?: () => void;
   onDirectSplit?: () => void;
+  onDetachDots?: (id?: string) => void;
   userFonts?: CustomUserFont[];
   isMobileDrawerOpen?: boolean;
   onCloseMobileDrawer?: () => void;
@@ -129,6 +140,7 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
   onOpenEbruStudio,
   onOpenSplitWord,
   onDirectSplit,
+  onDetachDots,
   isDigitalRulerActive = false,
   onToggleDigitalRuler,
   onOpenFontManager,
@@ -153,6 +165,13 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
   const [fontSize, setFontSize] = useState(48);
   const [kashidaLevel, setKashidaLevel] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync textColor when selected element changes
+  useEffect(() => {
+    if (selectedElement && selectedElement.color) {
+      setTextColor(selectedElement.color);
+    }
+  }, [selectedElement?.id, selectedElement?.color]);
 
   // Normalizes Persian text (fixes Arabic Kaf/Yeh, fixes Hamza, cleans spaces, converts digits)
   const handleNormalizePersian = () => {
@@ -298,17 +317,21 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
   const handleInsertDot = (dotPresetId: string) => {
     let dotChar = '◆';
     if (dotPresetId === 'double_nastaliq_dots') dotChar = '◆ ◆';
-    if (dotPresetId === 'triple_pyramid_dots') dotChar = '⁂';
+    if (dotPresetId === 'triple_pyramid_dots' || dotPresetId === 'triple_inverted_dots') dotChar = '⁂';
     if (dotPresetId === 'shekasteh_slash_dot') dotChar = 'ــــ';
 
+    const preset = DOT_PRESETS_MAP.get(dotPresetId);
+
     const newEl: CanvasElement = {
-      id: `dot_${Date.now()}`,
+      id: `dot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      name: preset ? preset.name : 'نقطه',
       type: 'dot',
+      dotPreset: dotPresetId,
       text: dotChar,
-      x: selectedElement ? selectedElement.x + 20 : canvasWidth / 2,
-      y: selectedElement ? selectedElement.y + 35 : canvasHeight / 2,
-      fontSize: Math.round(fontSize * 0.6),
-      fontFamily: SCRIPT_FONT_MAP[currentScript].cssFamily,
+      x: selectedElement ? selectedElement.x + 20 : Math.round(canvasWidth / 2),
+      y: selectedElement ? selectedElement.y + 35 : Math.round(canvasHeight / 2),
+      fontSize: selectedElement ? Math.round(selectedElement.fontSize * 0.7) : Math.round(fontSize * 0.6),
+      fontFamily: selectedElement ? selectedElement.fontFamily : SCRIPT_FONT_MAP[currentScript].cssFamily,
       color: selectedElement ? selectedElement.color : textColor,
       rotation: 0,
       scaleX: 1,
@@ -649,6 +672,25 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                 ref={textareaRef}
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData?.getData('text');
+                  if (pasted) {
+                    e.preventDefault();
+                    const sanitized = normalizePersianText(pasted, { convertDigits: true, fixHamza: true, cleanSpaces: true });
+                    const ta = textareaRef.current;
+                    if (ta) {
+                      const start = ta.selectionStart || 0;
+                      const end = ta.selectionEnd || 0;
+                      const updated = inputText.substring(0, start) + sanitized + inputText.substring(end);
+                      setInputText(updated);
+                      setTimeout(() => {
+                        ta.setSelectionRange(start + sanitized.length, start + sanitized.length);
+                      }, 0);
+                    } else {
+                      setInputText(prev => prev + sanitized);
+                    }
+                  }
+                }}
                 rows={2}
                 placeholder="متن دلخواه یا شعر فارسی را بنویسید..."
                 className="w-full bg-neutral-950/80 border border-neutral-700/80 rounded-xl p-3 text-neutral-100 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 leading-relaxed font-vazir"
@@ -788,29 +830,29 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                 </div>
               )}
 
-              {/* Color Inks */}
-              <div className="space-y-2 pt-2 border-t border-neutral-800">
-                <span className="text-xs text-neutral-400 block">رنگ و مرکب اصیل:</span>
-                <div className="grid grid-cols-4 gap-2">
-                  {TRADITIONAL_INKS.map((ink) => (
-                    <button
-                      key={ink.color}
-                      onClick={() => {
-                        setTextColor(ink.color);
-                        if (selectedElement) {
-                          onUpdateElement(selectedElement.id, { color: ink.color });
-                        }
-                      }}
-                      className={`h-7 rounded-xl border flex items-center justify-center transition-all ${
-                        (selectedElement ? selectedElement.color : textColor) === ink.color
-                          ? 'border-amber-400 scale-110 shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
-                          : 'border-neutral-700/60 hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: ink.color }}
-                      title={ink.name}
-                    />
-                  ))}
-                </div>
+              {/* Color Wheel & Traditional Inks */}
+              <div className="pt-2 border-t border-neutral-800">
+                <ColorWheelPicker
+                  color={selectedElement ? (selectedElement.color || textColor) : textColor}
+                  onChange={(newColor) => {
+                    setTextColor(newColor);
+                    if (selectedElement) {
+                      onUpdateElement(selectedElement.id, { color: newColor });
+                    }
+                  }}
+                  goldEffect={selectedElement?.goldEffect || false}
+                  onToggleGoldEffect={selectedElement ? () => {
+                    onUpdateElement(selectedElement.id, { goldEffect: !selectedElement.goldEffect });
+                  } : undefined}
+                  title="دایره انتخاب رنگ و مرکب کلمه"
+                  showPresets={true}
+                  compact={false}
+                  wordsList={selectedElement && selectedElement.text && selectedElement.type !== 'dot' && selectedElement.type !== 'tazhib' && selectedElement.text.trim().includes(' ')
+                    ? selectedElement.text.trim().split(/\s+/).map(w => ({ text: w, color: selectedElement.color || textColor }))
+                    : undefined
+                  }
+                  onSplitToColoredWords={onDirectSplit}
+                />
               </div>
             </div>
           </div>
@@ -968,30 +1010,167 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
         {/* =================== TAB 3: DOTS & DIACRITICS =================== */}
         {activeTab === 'dots' && (
           <div className="space-y-4">
-            {/* Dot Arrangement Selector */}
-            {selectedElement && selectedElement.type === 'text' && (
-              <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
-                <span className="text-xs text-neutral-300 font-bold block">آرایش و ترکیب نقطه‌ها:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'standard', label: 'مورب کلاسیک' },
-                    { id: 'connected_line', label: 'خطی پیوسته' },
-                    { id: 'horizontal', label: 'افقی جفتی' },
-                    { id: 'vertical_stack', label: 'ستونی عمودی' },
-                    { id: 'hidden', label: 'حذف نقطه‌ها (کهن)' },
-                  ].map((arr) => (
+            {/* Case A: Selected Element is an Independent Dot Element */}
+            {selectedElement && selectedElement.type === 'dot' && (
+              <div className="p-4 rounded-2xl bg-gradient-to-b from-amber-950/30 to-neutral-900/90 border border-amber-500/40 space-y-4 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-bold text-xs">
+                    <Diamond className="w-4 h-4 text-amber-400" />
+                    <span>تنظیم و جابجایی نقطه انتخاب‌شده {selectedElement.dotLetterTarget ? `(حرف ${selectedElement.dotLetterTarget})` : ''}</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-mono">
+                    X: {selectedElement.x} | Y: {selectedElement.y}
+                  </span>
+                </div>
+
+                {/* Dot Style Preset Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-neutral-300 font-semibold block">سبک و هندسه نقطه:</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {DOT_PRESETS.map((dp) => (
+                      <button
+                        key={dp.id}
+                        onClick={() => onUpdateElement(selectedElement.id, { dotPreset: dp.id, name: dp.name })}
+                        className={`p-2 rounded-xl border text-xs font-vazir text-center transition-all flex items-center gap-2 ${
+                          (selectedElement.dotPreset === dp.id || (!selectedElement.dotPreset && dp.id === 'single_nastaliq_dot'))
+                            ? 'bg-amber-500/25 text-amber-300 border-amber-500 font-bold shadow-sm'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        <div 
+                          className="w-5 h-5 text-amber-400 shrink-0 [&>svg]:w-full [&>svg]:h-full"
+                          dangerouslySetInnerHTML={{ __html: dp.svg }}
+                        />
+                        <span className="text-[11px] truncate">{dp.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* D-Pad 4-Way Fine Movement Controller for this Dot */}
+                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800/80 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-neutral-300">
+                    <span className="font-semibold flex items-center gap-1">
+                      <Move className="w-3.5 h-3.5 text-amber-400" />
+                      جابجایی میلی‌متری نقطه:
+                    </span>
+                    <span className="text-[10px] text-neutral-400">گام‌های ۲ پیکسل</span>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center gap-1.5 py-1">
                     <button
-                      key={arr.id}
-                      onClick={() => onUpdateElement(selectedElement.id, { dotArrangement: arr.id as DotArrangementType })}
-                      className={`p-2.5 rounded-xl border text-xs font-vazir text-center transition-all ${
-                        (selectedElement.dotArrangement || 'standard') === arr.id
-                          ? 'bg-amber-500/25 text-amber-300 border-amber-500 font-bold shadow-sm'
-                          : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                      }`}
+                      onClick={() => onUpdateElement(selectedElement.id, { y: selectedElement.y - 2 })}
+                      className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-500/40 text-neutral-200 hover:text-amber-300 transition-all shadow-sm active:scale-95"
+                      title="بالا (Up)"
                     >
-                      {arr.label}
+                      <ArrowUp className="w-4 h-4" />
                     </button>
-                  ))}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => onUpdateElement(selectedElement.id, { x: selectedElement.x + 2 })}
+                        className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-500/40 text-neutral-200 hover:text-amber-300 transition-all shadow-sm active:scale-95"
+                        title="راست (Right)"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                        <Diamond className="w-3.5 h-3.5" />
+                      </div>
+                      <button
+                        onClick={() => onUpdateElement(selectedElement.id, { x: selectedElement.x - 2 })}
+                        className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-500/40 text-neutral-200 hover:text-amber-300 transition-all shadow-sm active:scale-95"
+                        title="چپ (Left)"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => onUpdateElement(selectedElement.id, { y: selectedElement.y + 2 })}
+                      className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-500/40 text-neutral-200 hover:text-amber-300 transition-all shadow-sm active:scale-95"
+                      title="پایین (Down)"
+                    >
+                      <ArrowDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Size & Rotation */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] text-neutral-400">
+                      <span>اندازه دانگ:</span>
+                      <span className="font-mono text-amber-400">{selectedElement.fontSize} px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="14"
+                      max="160"
+                      value={selectedElement.fontSize}
+                      onChange={(e) => onUpdateElement(selectedElement.id, { fontSize: Number(e.target.value) })}
+                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] text-neutral-400">
+                      <span>زاویه چرخش:</span>
+                      <span className="font-mono text-amber-400">{selectedElement.rotation}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      value={selectedElement.rotation}
+                      onChange={(e) => onUpdateElement(selectedElement.id, { rotation: Number(e.target.value) })}
+                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Case B: Selected Element is Text with Dots */}
+            {selectedElement && selectedElement.type === 'text' && (
+              <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-neutral-300 font-bold block">مدیریت و جابجایی نقطه‌های متن:</span>
+                </div>
+
+                {/* Detach Dots Trigger Button */}
+                {onDetachDots && (
+                  <button
+                    onClick={() => onDetachDots(selectedElement.id)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-700/30 hover:from-amber-600/50 hover:to-amber-700/50 text-amber-300 border border-amber-500/50 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98"
+                  >
+                    <Diamond className="w-4 h-4 text-amber-400" />
+                    <span>⚡ جداسازی تمام نقطه‌ها به المان‌های مستقل</span>
+                  </button>
+                )}
+
+                {/* Dot Arrangement Selector */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] text-neutral-400 font-medium block">آرایش نقطه‌های کلمه:</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'standard', label: 'مورب کلاسیک' },
+                      { id: 'connected_line', label: 'خطی پیوسته' },
+                      { id: 'horizontal', label: 'افقی جفتی' },
+                      { id: 'vertical_stack', label: 'ستونی عمودی' },
+                      { id: 'hidden', label: 'حذف نقطه‌ها (کهن)' },
+                    ].map((arr) => (
+                      <button
+                        key={arr.id}
+                        onClick={() => onUpdateElement(selectedElement.id, { dotArrangement: arr.id as DotArrangementType })}
+                        className={`p-2 rounded-xl border text-xs font-vazir text-center transition-all ${
+                          (selectedElement.dotArrangement || 'standard') === arr.id
+                            ? 'bg-amber-500/25 text-amber-300 border-amber-500 font-bold shadow-sm'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        {arr.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Dot Fine Offsets */}
@@ -1003,11 +1182,11 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                     </div>
                     <input
                       type="range"
-                      min="-40"
-                      max="40"
+                      min="-60"
+                      max="60"
                       value={selectedElement.dotOffsetX || 0}
                       onChange={(e) => onUpdateElement(selectedElement.id, { dotOffsetX: Number(e.target.value) })}
-                      className="w-full accent-amber-500 bg-neutral-800 h-1 rounded-lg cursor-pointer"
+                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
                     />
                   </div>
 
@@ -1018,32 +1197,32 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                     </div>
                     <input
                       type="range"
-                      min="-40"
-                      max="40"
+                      min="-60"
+                      max="60"
                       value={selectedElement.dotOffsetY || 0}
                       onChange={(e) => onUpdateElement(selectedElement.id, { dotOffsetY: Number(e.target.value) })}
-                      className="w-full accent-amber-500 bg-neutral-800 h-1 rounded-lg cursor-pointer"
+                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
                     />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Dot Presets */}
+            {/* Dot Presets Library (Insert as Independent Draggable Elements) */}
             <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
-              <span className="text-xs text-neutral-300 font-bold block">درج نقاط نستعلیق و شکسته:</span>
+              <span className="text-xs text-neutral-300 font-bold block">درج نقاط اصیل خوشنویسی (المان مستقل):</span>
               <div className="grid grid-cols-2 gap-2">
                 {DOT_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
                     onClick={() => handleInsertDot(preset.id)}
-                    className="p-3 rounded-xl bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 hover:border-amber-500/40 transition-all text-center flex flex-col items-center gap-1.5"
+                    className="p-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 hover:border-amber-500/40 transition-all text-center flex flex-col items-center gap-1.5 cursor-pointer"
                   >
                     <div 
-                      className="text-amber-400 flex items-center justify-center h-7"
+                      className="text-amber-400 flex items-center justify-center h-6 [&>svg]:w-6 [&>svg]:h-6"
                       dangerouslySetInnerHTML={{ __html: preset.svg }}
                     />
-                    <span className="text-[11px] text-neutral-300">{preset.name}</span>
+                    <span className="text-[11px] text-neutral-300 truncate w-full">{preset.name}</span>
                   </button>
                 ))}
               </div>
