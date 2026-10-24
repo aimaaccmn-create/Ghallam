@@ -24,7 +24,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Move,
-  RotateCw
+  RotateCw,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { ColorWheelPicker } from './ColorWheelPicker';
 import { 
@@ -58,6 +62,25 @@ import { TEXTURE_FILL_PRESETS } from '../utils/calligraphyEffects';
 import { LayersPanel } from './LayersPanel';
 
 export type ToolsPanelTab = 'text' | 'curves' | 'dots' | 'effects' | 'symmetry' | 'tazhib' | 'paper' | 'layers';
+
+const SCRIPT_SPECIMENS: Record<string, string> = {
+  nastaliq: 'کلک خیال‌انگیز',
+  shekasteh: 'هو الجمیل',
+  thuluth: 'ن والقلم و ما یسطرون',
+  mualla: 'یا علی مدد',
+  reqa: 'خط رقاع اصیل',
+  naskh: 'بسم الله الرحمن الرحیم',
+  kufic: 'الحمد لله رب العالمین',
+  diwani: 'دیوانی عثمانی',
+  diwani_jali: 'دیوانی جلی کتیبه',
+  titr: 'عنوان و پوستر',
+  zar: 'متن و کتابت زر',
+  dastnevis: 'دست‌خط شاعرانه',
+  moraba: 'کوفی مربعی بنایی',
+  safir: 'سفیر گرافیک',
+  farhad: 'فرهاد و شیرین',
+  iran_nastaliq: 'ایران نستعلیق',
+};
 
 interface ToolsPanelProps {
   currentScript: CalligraphyScript;
@@ -165,6 +188,20 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
   const [fontSize, setFontSize] = useState(48);
   const [kashidaLevel, setKashidaLevel] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Collapsible section states for clean organization (Item #4)
+  const [isFontSectionOpen, setIsFontSectionOpen] = useState(true);
+  const [isVisualCardsOpen, setIsVisualCardsOpen] = useState(false);
+  const [isInputSectionOpen, setIsInputSectionOpen] = useState(true);
+  const [isPersianToolsOpen, setIsPersianToolsOpen] = useState(false);
+  const [isDimensionsOpen, setIsDimensionsOpen] = useState(true);
+
+  // Expanded Diacritics & Harakat state
+  const [diacriticCategoryFilter, setDiacriticCategoryFilter] = useState<'all' | 'harakat' | 'tanween' | 'compound' | 'symbol' | 'ornament' | 'sacred'>('all');
+  const [diacriticSearch, setDiacriticSearch] = useState('');
+  const [diacriticScaleMultiplier, setDiacriticScaleMultiplier] = useState<number>(1);
+  const [diacriticCustomColor, setDiacriticCustomColor] = useState<string>('');
+  const [quickDiacriticCategory, setQuickDiacriticCategory] = useState<'core' | 'tanween' | 'compounds' | 'poetry' | 'ornaments' | 'sacred'>('core');
 
   // Sync textColor when selected element changes
   useEffect(() => {
@@ -294,16 +331,20 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
   };
 
   // Insert Diacritic / Tashkeel
-  const handleInsertDiacritic = (char: string) => {
+  const handleInsertDiacritic = (char: string, scaleMul?: number, customColor?: string) => {
+    const mul = scaleMul !== undefined ? scaleMul : diacriticScaleMultiplier;
+    const finalSize = Math.max(16, Math.round(fontSize * 0.75 * mul));
+    const finalColor = customColor || diacriticCustomColor || (selectedElement ? selectedElement.color : textColor);
+
     const newEl: CanvasElement = {
-      id: `tashkeel_${Date.now()}`,
+      id: `tashkeel_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       type: 'tashkeel',
       text: char,
-      x: selectedElement ? selectedElement.x : canvasWidth / 2,
-      y: selectedElement ? selectedElement.y - 30 : canvasHeight / 2,
-      fontSize: Math.round(fontSize * 0.75),
+      x: selectedElement ? selectedElement.x + (Math.random() * 20 - 10) : canvasWidth / 2,
+      y: selectedElement ? selectedElement.y - 32 : canvasHeight / 2,
+      fontSize: finalSize,
       fontFamily: SCRIPT_FONT_MAP[currentScript].cssFamily,
-      color: selectedElement ? selectedElement.color : textColor,
+      color: finalColor,
       rotation: 0,
       scaleX: 1,
       scaleY: 1,
@@ -400,13 +441,13 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-neutral-800/80 bg-neutral-900/60 p-1.5 gap-1 overflow-x-auto no-scrollbar scroll-smooth">
+        {/* Navigation Tabs (2 Rows, 4 Tabs each - 100% visible and accessible without scrolling) */}
+        <div className="grid grid-cols-4 gap-1 p-1.5 border-b border-neutral-800/80 bg-neutral-900/70 shrink-0">
         {[
           { id: 'text', label: 'قلم و کلمات', icon: Type },
-          { id: 'curves', label: 'انحنا و کتیبه', icon: Orbit },
           { id: 'dots', label: 'اعراب و نقاط', icon: Sparkles },
-          { id: 'effects', label: 'بافت و خط‌دور', icon: Paintbrush },
+          { id: 'curves', label: 'انحنا و کتیبه', icon: Orbit },
+          { id: 'effects', label: 'بافت و افکت', icon: Paintbrush },
           { id: 'symmetry', label: 'المثنی و طغرا', icon: Split },
           { id: 'tazhib', label: 'تذهیب و اسلیمی', icon: Compass },
           { id: 'paper', label: 'کاغذ و قاب', icon: Palette },
@@ -418,14 +459,14 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 min-w-[56px] py-2 px-1 text-[10px] sm:text-[11px] font-vazir font-semibold flex flex-col items-center justify-center gap-1 rounded-xl transition-all shrink-0 ${
+              className={`py-2 px-1 text-[11px] font-vazir font-semibold flex flex-col items-center justify-center gap-1 rounded-xl transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-amber-600/25 text-amber-300 border border-amber-500/40 shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-850/60'
+                  ? 'bg-amber-600/30 text-amber-300 border border-amber-500/50 shadow-sm'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 border border-transparent'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span className="whitespace-nowrap">{tab.label}</span>
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap text-[10px] leading-tight">{tab.label}</span>
             </button>
           );
         })}
@@ -436,153 +477,302 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
         {/* =================== TAB 1: TEXT & KASHIDA =================== */}
         {activeTab === 'text' && (
           <div className="space-y-4">
-            {/* Master Font / Script Selection Card */}
-            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-3.5 space-y-2.5">
+            {/* Master Font / Script Selection Card (Item #4 Collapsible & Item #5 Visual Script Cards) */}
+            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-3.5 space-y-2.5 transition-all shadow-sm">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsFontSectionOpen(!isFontSectionOpen)}
+                  className="font-semibold text-neutral-200 flex items-center gap-1.5 hover:text-amber-300 transition-colors cursor-pointer"
+                >
                   <Type className="w-3.5 h-3.5 text-amber-400" />
                   <span>انتخاب قلم و فونت:</span>
-                </span>
-                {onOpenFontManager && (
+                  <span className="text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono mr-1">
+                    {SCRIPT_FONT_MAP[selectedElement?.script || currentScript]?.name}
+                  </span>
+                  {isFontSectionOpen ? <ChevronUp className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />}
+                </button>
+
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={onOpenFontManager}
-                    className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold transition-colors"
+                    type="button"
+                    onClick={() => setIsVisualCardsOpen(!isVisualCardsOpen)}
+                    className={`p-1.5 rounded-lg border text-[11px] flex items-center gap-1 transition-all cursor-pointer ${
+                      isVisualCardsOpen
+                        ? 'bg-amber-500/25 text-amber-300 border-amber-500/50'
+                        : 'bg-neutral-950/70 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                    }`}
+                    title={isVisualCardsOpen ? 'نمایش به صورت فهرست فشرده' : 'نمایش کارت‌های بصری قلم'}
                   >
-                    <span>مدیریت و آپلود فونت</span>
-                    <Sparkles className="w-3 h-3" />
+                    {isVisualCardsOpen ? <List className="w-3.5 h-3.5" /> : <LayoutGrid className="w-3.5 h-3.5" />}
+                    <span className="text-[10px] hidden sm:inline">{isVisualCardsOpen ? 'فهرست' : 'کارت‌ها'}</span>
                   </button>
-                )}
-              </div>
 
-              {/* Font Selector Dropdown */}
-              <div className="space-y-1.5">
-                <select
-                  value={
-                    selectedElement
-                      ? (selectedElement.script === 'custom'
-                          ? (userFonts.find(f => f.fontFamily === selectedElement.fontFamily)
-                              ? `custom_${userFonts.find(f => f.fontFamily === selectedElement.fontFamily)!.id}`
-                              : 'custom')
-                          : selectedElement.script)
-                      : (currentScript === 'custom' && userFonts.length > 0
-                          ? `custom_${userFonts[0].id}`
-                          : currentScript)
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val.startsWith('custom_')) {
-                      const ufId = val.replace('custom_', '');
-                      const uf = userFonts.find(f => f.id === ufId);
-                      onScriptChange('custom');
-                      if (selectedElement && uf) {
-                        onUpdateElement(selectedElement.id, {
-                          script: 'custom',
-                          fontFamily: uf.fontFamily
-                        });
-                      }
-                    } else if (val === 'custom') {
-                      onScriptChange('custom');
-                      if (selectedElement && userFonts.length > 0) {
-                        onUpdateElement(selectedElement.id, {
-                          script: 'custom',
-                          fontFamily: userFonts[0].fontFamily
-                        });
-                      }
-                    } else {
-                      const scriptVal = val as CalligraphyScript;
-                      onScriptChange(scriptVal);
-                      if (selectedElement) {
-                        const meta = SCRIPT_FONT_MAP[scriptVal];
-                        if (meta) {
-                          onUpdateElement(selectedElement.id, { 
-                            script: scriptVal,
-                            fontFamily: meta.cssFamily 
-                          });
-                        }
-                      }
-                    }
-                  }}
-                  className="w-full bg-neutral-950/90 border border-neutral-700/80 hover:border-amber-500/50 rounded-xl px-3 py-2 text-xs text-amber-300 font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
-                >
-                  {userFonts.length > 0 && (
-                    <optgroup label="فونت‌های اختصاصی شما (آپلود شده)" className="bg-neutral-950 text-amber-400 font-bold">
-                      {userFonts.map(uf => (
-                        <option key={uf.id} value={`custom_${uf.id}`} className="bg-neutral-900 text-neutral-200">
-                          ★ {uf.name} (فونت من)
-                        </option>
-                      ))}
-                    </optgroup>
+                  {onOpenFontManager && (
+                    <button
+                      onClick={onOpenFontManager}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 p-1.5 rounded-lg bg-neutral-950/70 border border-neutral-800 hover:border-amber-500/40 flex items-center gap-1 font-semibold transition-colors"
+                      title="مدیریت و آپلود فونت"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                    </button>
                   )}
-                  <optgroup label="خوشنویسی سنتی و اقلام اصیل" className="bg-neutral-950 text-neutral-400 font-bold">
-                    {Object.entries(SCRIPT_FONT_MAP)
-                      .filter(([k, v]) => k !== 'custom' && v.category === 'traditional')
-                      .map(([key, item]) => (
-                        <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
-                          {item.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="کوفی و کتیبه‌ای" className="bg-neutral-950 text-neutral-400 font-bold">
-                    {Object.entries(SCRIPT_FONT_MAP)
-                      .filter(([k, v]) => v.category === 'kufic')
-                      .map(([key, item]) => (
-                        <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
-                          {item.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="دیوانی، نسخ و عثمانی" className="bg-neutral-950 text-neutral-400 font-bold">
-                    {Object.entries(SCRIPT_FONT_MAP)
-                      .filter(([k, v]) => v.category === 'diwani_naskh')
-                      .map(([key, item]) => (
-                        <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
-                          {item.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="تایپوگرافی و عناوین پوستر" className="bg-neutral-950 text-neutral-400 font-bold">
-                    {Object.entries(SCRIPT_FONT_MAP)
-                      .filter(([k, v]) => v.category === 'display')
-                      .map(([key, item]) => (
-                        <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
-                          {item.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="دست‌نویس و تحریری" className="bg-neutral-950 text-neutral-400 font-bold">
-                    {Object.entries(SCRIPT_FONT_MAP)
-                      .filter(([k, v]) => v.category === 'handwriting')
-                      .map(([key, item]) => (
-                        <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
-                          {item.name}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-
-                <p className="text-[11px] text-neutral-400 line-clamp-1 px-1">
-                  {SCRIPT_FONT_MAP[selectedElement?.script || currentScript]?.desc}
-                </p>
+                </div>
               </div>
+
+              {isFontSectionOpen && (
+                <div className="space-y-2 pt-1 animate-in fade-in duration-200">
+                  {/* Visual Script Cards Gallery View */}
+                  {isVisualCardsOpen ? (
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1 no-scrollbar">
+                      {/* User Custom Fonts if any */}
+                      {userFonts.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-amber-400 font-bold px-1">فونت‌های اختصاصی شما:</span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {userFonts.map(uf => {
+                              const isSelected = selectedElement 
+                                ? (selectedElement.script === 'custom' && selectedElement.fontFamily === uf.fontFamily)
+                                : (currentScript === 'custom');
+                              return (
+                                <button
+                                  key={uf.id}
+                                  type="button"
+                                  onClick={() => {
+                                    onScriptChange('custom');
+                                    if (selectedElement) {
+                                      onUpdateElement(selectedElement.id, { script: 'custom', fontFamily: uf.fontFamily });
+                                    }
+                                  }}
+                                  className={`p-2 rounded-xl border text-right transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-amber-600/30 border-amber-500 text-amber-300 shadow-sm'
+                                      : 'bg-neutral-950/80 border-neutral-800 hover:border-neutral-700 text-neutral-300'
+                                  }`}
+                                >
+                                  <div className="text-xs font-bold truncate">★ {uf.name}</div>
+                                  <div className="text-[11px] mt-1 text-amber-200/80 line-clamp-1" style={{ fontFamily: uf.fontFamily }}>
+                                    کلک هنر و خطاطی
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Traditional & Classical Scripts */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {Object.entries(SCRIPT_FONT_MAP)
+                          .filter(([k]) => k !== 'custom')
+                          .map(([key, item]) => {
+                            const scriptKey = key as CalligraphyScript;
+                            const isSelected = selectedElement ? selectedElement.script === scriptKey : currentScript === scriptKey;
+                            const specimen = SCRIPT_SPECIMENS[scriptKey] || 'کلک هنر و خوشنویسی';
+                            return (
+                              <button
+                                key={scriptKey}
+                                type="button"
+                                onClick={() => {
+                                  onScriptChange(scriptKey);
+                                  if (selectedElement) {
+                                    onUpdateElement(selectedElement.id, {
+                                      script: scriptKey,
+                                      fontFamily: item.cssFamily
+                                    });
+                                  }
+                                }}
+                                className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer relative overflow-hidden group ${
+                                  isSelected
+                                    ? 'bg-amber-600/25 border-amber-500 text-amber-300 shadow-md shadow-amber-950/40'
+                                    : 'bg-neutral-950/85 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/90 text-neutral-300'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold">{item.name}</span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-sans ${
+                                    item.category === 'traditional' ? 'bg-amber-500/15 text-amber-300' :
+                                    item.category === 'kufic' ? 'bg-blue-500/15 text-blue-300' :
+                                    item.category === 'diwani_naskh' ? 'bg-emerald-500/15 text-emerald-300' :
+                                    item.category === 'display' ? 'bg-purple-500/15 text-purple-300' :
+                                    'bg-rose-500/15 text-rose-300'
+                                  }`}>
+                                    {item.category === 'traditional' ? 'اصیل سنتی' :
+                                     item.category === 'kufic' ? 'کوفی' :
+                                     item.category === 'diwani_naskh' ? 'دیوانی/نسخ' :
+                                     item.category === 'display' ? 'پوستر' : 'تحریری'}
+                                  </span>
+                                </div>
+                                <div 
+                                  className="text-sm mt-1.5 text-amber-100/90 line-clamp-1 py-0.5" 
+                                  style={{ fontFamily: item.cssFamily }}
+                                >
+                                  {specimen}
+                                </div>
+                                <div className="text-[9px] text-neutral-500 line-clamp-1 mt-0.5">
+                                  {item.desc}
+                                </div>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Compact Dropdown Selector */
+                    <div className="space-y-1.5">
+                      <select
+                        value={
+                          selectedElement
+                            ? (selectedElement.script === 'custom'
+                                ? (userFonts.find(f => f.fontFamily === selectedElement.fontFamily)
+                                    ? `custom_${userFonts.find(f => f.fontFamily === selectedElement.fontFamily)!.id}`
+                                    : 'custom')
+                                : selectedElement.script)
+                            : (currentScript === 'custom' && userFonts.length > 0
+                                ? `custom_${userFonts[0].id}`
+                                : currentScript)
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val.startsWith('custom_')) {
+                            const ufId = val.replace('custom_', '');
+                            const uf = userFonts.find(f => f.id === ufId);
+                            onScriptChange('custom');
+                            if (selectedElement && uf) {
+                              onUpdateElement(selectedElement.id, {
+                                script: 'custom',
+                                fontFamily: uf.fontFamily
+                              });
+                            }
+                          } else if (val === 'custom') {
+                            onScriptChange('custom');
+                            if (selectedElement && userFonts.length > 0) {
+                              onUpdateElement(selectedElement.id, {
+                                script: 'custom',
+                                fontFamily: userFonts[0].fontFamily
+                              });
+                            }
+                          } else {
+                            const scriptVal = val as CalligraphyScript;
+                            onScriptChange(scriptVal);
+                            if (selectedElement) {
+                              const meta = SCRIPT_FONT_MAP[scriptVal];
+                              if (meta) {
+                                onUpdateElement(selectedElement.id, { 
+                                  script: scriptVal,
+                                  fontFamily: meta.cssFamily 
+                                });
+                              }
+                            }
+                          }
+                        }}
+                        className="w-full bg-neutral-950/90 border border-neutral-700/80 hover:border-amber-500/50 rounded-xl px-3 py-2 text-xs text-amber-300 font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                      >
+                        {userFonts.length > 0 && (
+                          <optgroup label="فونت‌های اختصاصی شما (آپلود شده)" className="bg-neutral-950 text-amber-400 font-bold">
+                            {userFonts.map(uf => (
+                              <option key={uf.id} value={`custom_${uf.id}`} className="bg-neutral-900 text-neutral-200">
+                                ★ {uf.name} (فونت من)
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="خوشنویسی سنتی و اقلام اصیل" className="bg-neutral-950 text-neutral-400 font-bold">
+                          {Object.entries(SCRIPT_FONT_MAP)
+                            .filter(([k, v]) => k !== 'custom' && v.category === 'traditional')
+                            .map(([key, item]) => (
+                              <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
+                                {item.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="کوفی و کتیبه‌ای" className="bg-neutral-950 text-neutral-400 font-bold">
+                          {Object.entries(SCRIPT_FONT_MAP)
+                            .filter(([k, v]) => v.category === 'kufic')
+                            .map(([key, item]) => (
+                              <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
+                                {item.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="دیوانی، نسخ و عثمانی" className="bg-neutral-950 text-neutral-400 font-bold">
+                          {Object.entries(SCRIPT_FONT_MAP)
+                            .filter(([k, v]) => v.category === 'diwani_naskh')
+                            .map(([key, item]) => (
+                              <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
+                                {item.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="تایپوگرافی و عناوین پوستر" className="bg-neutral-950 text-neutral-400 font-bold">
+                          {Object.entries(SCRIPT_FONT_MAP)
+                            .filter(([k, v]) => v.category === 'display')
+                            .map(([key, item]) => (
+                              <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
+                                {item.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="دست‌نویس و تحریری" className="bg-neutral-950 text-neutral-400 font-bold">
+                          {Object.entries(SCRIPT_FONT_MAP)
+                            .filter(([k, v]) => v.category === 'handwriting')
+                            .map(([key, item]) => (
+                              <option key={key} value={key} className="bg-neutral-900 text-neutral-200">
+                                {item.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+
+                      <p className="text-[11px] text-neutral-400 line-clamp-1 px-1">
+                        {SCRIPT_FONT_MAP[selectedElement?.script || currentScript]?.desc}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Input Card */}
-            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-3.5 space-y-2.5">
-              <div className="flex justify-between items-center text-xs text-neutral-400">
-                <span className="font-semibold text-neutral-300">متن خوشنویسی:</span>
-                <span className="text-amber-400 font-mono text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                  {SCRIPT_FONT_MAP[currentScript]?.name}
+            {/* Input Card (Item #4 Collapsible) */}
+            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-3.5 space-y-2.5 transition-all shadow-sm">
+              <button
+                type="button"
+                onClick={() => setIsInputSectionOpen(!isInputSectionOpen)}
+                className="w-full flex justify-between items-center text-xs text-neutral-400 hover:text-neutral-200 cursor-pointer"
+              >
+                <span className="font-semibold text-neutral-200 flex items-center gap-1.5">
+                  <PenTool className="w-3.5 h-3.5 text-amber-400" />
+                  <span>نگارش متن و سطر خوشنویسی</span>
                 </span>
-              </div>
-
-              {/* Persian Typography Optimizer Quick Toolbar */}
-              <div className="bg-neutral-950/70 border border-neutral-800/90 rounded-xl p-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-amber-400/90 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>بهینه‌ساز و جعبه‌ابزار خط فارسی:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-400 font-mono text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                    {SCRIPT_FONT_MAP[currentScript]?.name}
                   </span>
+                  {isInputSectionOpen ? <ChevronUp className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />}
                 </div>
+              </button>
+
+              {isInputSectionOpen && (
+                <div className="space-y-2.5 pt-1 animate-in fade-in duration-200">
+                  {/* Persian Typography Optimizer Quick Toolbar (Collapsible Sub-accordion) */}
+                  <div className="bg-neutral-950/70 border border-neutral-800/90 rounded-xl p-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsPersianToolsOpen(!isPersianToolsOpen)}
+                      className="w-full flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="text-[11px] font-bold text-amber-400/90 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        <span>بهینه‌ساز خط فارسی و اعراب سریع</span>
+                      </span>
+                      <span className="text-[10px] text-neutral-500 flex items-center gap-0.5">
+                        {isPersianToolsOpen ? 'بستن' : 'ابزارها'}
+                        {isPersianToolsOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </span>
+                    </button>
+
+                    {isPersianToolsOpen && (
+                      <div className="space-y-2 pt-1 animate-in fade-in duration-150">
 
                 {/* Primary Action Buttons */}
                 <div className="grid grid-cols-3 gap-1.5 text-[10px]">
@@ -636,84 +826,214 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                   </div>
                 </div>
 
-                {/* Quick Persian Diacritics & Aerab */}
-                <div className="space-y-1 pt-1 border-t border-neutral-850">
+                {/* Quick Persian Diacritics & Aerab - Comprehensive & Grouped */}
+                <div className="space-y-1.5 pt-1 border-t border-neutral-850">
                   <div className="flex items-center justify-between text-[10px] text-neutral-400">
-                    <span>اعراب و حرکات فارسی:</span>
+                    <span className="font-bold text-amber-300/90">اعراب و حرکات سریع متن:</span>
+                    <div className="flex items-center gap-1">
+                      {[
+                        { id: 'core', label: 'حرکات' },
+                        { id: 'tanween', label: 'تنوین' },
+                        { id: 'compounds', label: 'ترکیب‌ها' },
+                        { id: 'poetry', label: 'شعر' },
+                        { id: 'ornaments', label: 'تزیینات' },
+                        { id: 'sacred', label: 'صلوات' }
+                      ].map(g => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => setQuickDiacriticCategory(g.id as any)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] transition-colors ${
+                            quickDiacriticCategory === g.id
+                              ? 'bg-amber-500/30 text-amber-300 font-bold border border-amber-500/40'
+                              : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+                          }`}
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+
                   <div className="flex flex-wrap gap-1">
-                    {[
-                      { sym: 'َ', name: 'فتحه' },
-                      { sym: 'ِ', name: 'کسره' },
-                      { sym: 'ُ', name: 'ضمه' },
-                      { sym: 'ً', name: 'تنوین نصب' },
-                      { sym: 'ٍ', name: 'تنوین جر' },
-                      { sym: 'ٌ', name: 'تنوین رفع' },
+                    {quickDiacriticCategory === 'core' && [
+                      { sym: 'َ', name: 'فتحه / زبر' },
+                      { sym: 'ِ', name: 'کسره / زیر' },
+                      { sym: 'ُ', name: 'ضمه / پیش' },
                       { sym: 'ّ', name: 'تشدید' },
-                      { sym: 'ْ', name: 'سکون' },
-                      { sym: 'ٔ', name: 'همزه' },
-                      { sym: 'ٓ', name: 'مد' },
+                      { sym: 'ْ', name: 'سکون / جزم' },
+                      { sym: 'ٓ', name: 'مد روی الف' },
+                      { sym: 'ٰ', name: 'الف مقصوره' },
+                      { sym: 'ٔ', name: 'همزه بالا' },
+                      { sym: 'ٕ', name: 'همزه زیرین' },
+                      { sym: 'ٗ', name: 'اشباع واو' },
+                      { sym: 'ٖ', name: 'اشباع یاء' },
                     ].map(dia => (
                       <button
                         key={dia.name}
                         type="button"
                         onClick={() => handleInsertChar(dia.sym)}
                         title={dia.name}
-                        className="w-6 h-6 flex items-center justify-center rounded-md bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-sm transition-all"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-base font-bold transition-all hover:scale-105 active:scale-95"
+                      >
+                        {dia.sym}
+                      </button>
+                    ))}
+
+                    {quickDiacriticCategory === 'tanween' && [
+                      { sym: 'ً', name: 'تنوین نصب (ـاً)' },
+                      { sym: 'ٌ', name: 'تنوین رفع (ـٌ)' },
+                      { sym: 'ٍ', name: 'تنوین جر (ـٍ)' },
+                    ].map(dia => (
+                      <button
+                        key={dia.name}
+                        type="button"
+                        onClick={() => handleInsertChar(dia.sym)}
+                        title={dia.name}
+                        className="h-7 px-2 flex items-center justify-center rounded-lg bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                      >
+                        {dia.sym}
+                      </button>
+                    ))}
+
+                    {quickDiacriticCategory === 'compounds' && [
+                      { sym: 'َّ', name: 'تشدید با فتحه' },
+                      { sym: 'ُّ', name: 'تشدید با ضمه' },
+                      { sym: 'ِّ', name: 'تشدید با کسره' },
+                      { sym: 'ًّ', name: 'تشدید با تنوین نصب' },
+                      { sym: 'ٌّ', name: 'تشدید با تنوین رفع' },
+                      { sym: 'ـ', name: 'کشیده / تطویل' },
+                      { sym: 'ۛ', name: 'زلفی و سرکج' },
+                      { sym: 'ٱ', name: 'همزه وصل' },
+                    ].map(dia => (
+                      <button
+                        key={dia.name}
+                        type="button"
+                        onClick={() => handleInsertChar(dia.sym)}
+                        title={dia.name}
+                        className="h-7 px-2 flex items-center justify-center rounded-lg bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                      >
+                        {dia.sym}
+                      </button>
+                    ))}
+
+                    {quickDiacriticCategory === 'poetry' && [
+                      { sym: '؏', name: 'علامت مصرع شعر' },
+                      { sym: 'ؔ', name: 'علامت تخلص شاعر' },
+                      { sym: '؁', name: 'علامت سنه تاریخی' },
+                      { sym: '؂', name: 'علامت صفحه' },
+                      { sym: '؃', name: 'علامت شماره بیت' },
+                      { sym: '﴾', name: 'پرانتز اسلیمی راست' },
+                      { sym: '﴿', name: 'پرانتز اسلیمی چپ' },
+                      { sym: '،', name: 'ویرگول سنتی' },
+                      { sym: '؛', name: 'سجاوندی سنتی' },
+                    ].map(dia => (
+                      <button
+                        key={dia.name}
+                        type="button"
+                        onClick={() => handleInsertChar(dia.sym)}
+                        title={dia.name}
+                        className="h-7 px-2 flex items-center justify-center rounded-lg bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-xs font-bold transition-all hover:scale-105 active:scale-95"
+                      >
+                        {dia.sym}
+                      </button>
+                    ))}
+
+                    {quickDiacriticCategory === 'ornaments' && [
+                      { sym: '۝', name: 'گل ختم آیه و ترنج' },
+                      { sym: '۞', name: 'ستاره هشت‌پر زرین' },
+                      { sym: '۩', name: 'سجده و ربع الحزب' },
+                      { sym: '◆', name: 'دانگ نقطه قلم لوزی' },
+                      { sym: '◇', name: 'لوزی میان‌تهی' },
+                      { sym: '⁂', name: 'سه نقطه تاجی' },
+                      { sym: '❀', name: 'گل پنج‌پر' },
+                      { sym: '❦', name: 'برگ ختایی' },
+                      { sym: '✦', name: 'ستاره چهارپر' },
+                      { sym: '✵', name: 'شمسه هشت‌پر' },
+                    ].map(dia => (
+                      <button
+                        key={dia.name}
+                        type="button"
+                        onClick={() => handleInsertChar(dia.sym)}
+                        title={dia.name}
+                        className="h-7 px-2 flex items-center justify-center rounded-lg bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                      >
+                        {dia.sym}
+                      </button>
+                    ))}
+
+                    {quickDiacriticCategory === 'sacred' && [
+                      { sym: '﷽', name: 'بسم الله الرحمن الرحیم' },
+                      { sym: 'ﷻ', name: 'جل جلاله' },
+                      { sym: 'ﷺ', name: 'صلی الله علیه و آله' },
+                      { sym: 'ؑ', name: 'علیه السلام' },
+                      { sym: 'ؓ', name: 'رضی الله عنه' },
+                      { sym: 'ؒ', name: 'رحمه الله' },
+                    ].map(dia => (
+                      <button
+                        key={dia.name}
+                        type="button"
+                        onClick={() => handleInsertChar(dia.sym)}
+                        title={dia.name}
+                        className="h-7 px-2 flex items-center justify-center rounded-lg bg-neutral-900 hover:bg-amber-500/20 text-amber-300 border border-neutral-800 text-xs font-bold transition-all hover:scale-105 active:scale-95"
                       >
                         {dia.sym}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
+                      </div>
+                    )}
+                  </div>
 
-              <textarea
-                ref={textareaRef}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onPaste={(e) => {
-                  const pasted = e.clipboardData?.getData('text');
-                  if (pasted) {
-                    e.preventDefault();
-                    const sanitized = normalizePersianText(pasted, { convertDigits: true, fixHamza: true, cleanSpaces: true });
-                    const ta = textareaRef.current;
-                    if (ta) {
-                      const start = ta.selectionStart || 0;
-                      const end = ta.selectionEnd || 0;
-                      const updated = inputText.substring(0, start) + sanitized + inputText.substring(end);
-                      setInputText(updated);
-                      setTimeout(() => {
-                        ta.setSelectionRange(start + sanitized.length, start + sanitized.length);
-                      }, 0);
-                    } else {
-                      setInputText(prev => prev + sanitized);
-                    }
-                  }
-                }}
-                rows={2}
-                placeholder="متن دلخواه یا شعر فارسی را بنویسید..."
-                className="w-full bg-neutral-950/80 border border-neutral-700/80 rounded-xl p-3 text-neutral-100 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 leading-relaxed font-vazir"
-              />
+                  <textarea
+                    ref={textareaRef}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData?.getData('text');
+                      if (pasted) {
+                        e.preventDefault();
+                        const sanitized = normalizePersianText(pasted, { convertDigits: true, fixHamza: true, cleanSpaces: true });
+                        const ta = textareaRef.current;
+                        if (ta) {
+                          const start = ta.selectionStart || 0;
+                          const end = ta.selectionEnd || 0;
+                          const updated = inputText.substring(0, start) + sanitized + inputText.substring(end);
+                          setInputText(updated);
+                          setTimeout(() => {
+                            ta.setSelectionRange(start + sanitized.length, start + sanitized.length);
+                          }, 0);
+                        } else {
+                          setInputText(prev => prev + sanitized);
+                        }
+                      }
+                    }}
+                    rows={2}
+                    placeholder="متن دلخواه یا شعر فارسی را بنویسید..."
+                    className="w-full bg-neutral-950/80 border border-neutral-700/80 rounded-xl p-3 text-neutral-100 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 leading-relaxed font-vazir"
+                  />
 
-              {/* Insertion Action Buttons */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  onClick={handleAddFullLine}
-                  className="flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-300 font-semibold py-2 px-3 rounded-xl border border-neutral-700 text-xs transition-all active:scale-95 shadow-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>درج سطر کامل</span>
-                </button>
-                <button
-                  onClick={handleAddWordByWord}
-                  className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-600/30 to-amber-700/30 hover:from-amber-600/50 hover:to-amber-700/50 text-amber-200 font-semibold py-2 px-3 rounded-xl border border-amber-500/40 text-xs transition-all active:scale-95 shadow-sm"
-                  title="تفکیک به کلمات مستقل جهت سوار کردن و ترکیب دستی (ویژگی کلیدی کلک)"
-                >
-                  <Sliders className="w-4 h-4 text-amber-300" />
-                  <span>تفکیک کلمات (کلک)</span>
-                </button>
-              </div>
+                  {/* Insertion Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      onClick={handleAddFullLine}
+                      className="flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-300 font-semibold py-2 px-3 rounded-xl border border-neutral-700 text-xs transition-all active:scale-95 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>درج سطر کامل</span>
+                    </button>
+                    <button
+                      onClick={handleAddWordByWord}
+                      className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-600/30 to-amber-700/30 hover:from-amber-600/50 hover:to-amber-700/50 text-amber-200 font-semibold py-2 px-3 rounded-xl border border-amber-500/40 text-xs transition-all active:scale-95 shadow-sm cursor-pointer"
+                      title="تفکیک به کلمات مستقل جهت سوار کردن و ترکیب دستی (ویژگی کلیدی کلک)"
+                    >
+                      <Sliders className="w-4 h-4 text-amber-300" />
+                      <span>تفکیک کلمات (کلک)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Quick Studios Bar */}
@@ -737,7 +1057,7 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
               {onOpenReedPen && (
                 <button
                   onClick={onOpenReedPen}
-                  className="flex items-center justify-center gap-1.5 p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-850 border border-neutral-800 text-xs text-amber-300 transition-all"
+                  className="flex items-center justify-center gap-1.5 p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-850 border border-neutral-800 text-xs text-amber-300 transition-all cursor-pointer"
                 >
                   <PenTool className="w-3.5 h-3.5 text-amber-400" />
                   <span>قلم‌نی زنده (سیاه‌مشق)</span>
@@ -745,115 +1065,129 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
               )}
             </div>
 
-            {/* Live Kashida & Parameters */}
-            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4 space-y-3.5 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span className="text-neutral-300">تنظیمات قلم و دانگ:</span>
-                {selectedElement ? (
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
-                    المان انتخاب شده
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-neutral-500">تنظیم کلی</span>
-                )}
-              </div>
-
-              {/* Kashida Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs text-neutral-400">
-                  <span>میزان کشیدگی (مد / کشیده):</span>
-                  <span className="font-mono text-amber-400 font-bold">
-                    {selectedElement ? (selectedElement.kashidaLevel || 0) : kashidaLevel}
-                  </span>
+            {/* Live Kashida & Parameters (Item #4 Collapsible) */}
+            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-3.5 space-y-3.5 shadow-sm transition-all">
+              <button
+                type="button"
+                onClick={() => setIsDimensionsOpen(!isDimensionsOpen)}
+                className="w-full flex items-center justify-between text-xs font-semibold hover:text-amber-300 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 text-neutral-200">
+                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                  <span>ابعاد قلم، کشیدگی و رنگ مرکب:</span>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="8"
-                  value={selectedElement ? (selectedElement.kashidaLevel || 0) : kashidaLevel}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    if (selectedElement) {
-                      onUpdateElement(selectedElement.id, { kashidaLevel: val });
-                    } else {
-                      setKashidaLevel(val);
-                    }
-                  }}
-                  className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
-                />
-              </div>
-
-              {/* Font Size */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs text-neutral-400">
-                  <span>دانگ و ضخامت قلم (اندازه):</span>
-                  <span className="font-mono text-amber-400 font-bold">
-                    {selectedElement ? selectedElement.fontSize : fontSize} px
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="16"
-                  max="180"
-                  value={selectedElement ? selectedElement.fontSize : fontSize}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    if (selectedElement) {
-                      onUpdateElement(selectedElement.id, { fontSize: val });
-                    } else {
-                      setFontSize(val);
-                    }
-                  }}
-                  className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
-                />
-              </div>
-
-              {/* Baseline Vertical Shift */}
-              {selectedElement && (
-                <div className="space-y-1.5 pt-1 border-t border-neutral-800">
-                  <div className="flex justify-between text-xs text-neutral-400">
-                    <span>سوار کردن / جابجایی خط کرسی:</span>
-                    <span className="font-mono text-amber-400 font-bold">
-                      {selectedElement.baselineShift || 0} px
+                <div className="flex items-center gap-1.5">
+                  {selectedElement ? (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      المان انتخابی
                     </span>
+                  ) : (
+                    <span className="text-[10px] text-neutral-500">تنظیم کلی</span>
+                  )}
+                  {isDimensionsOpen ? <ChevronUp className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />}
+                </div>
+              </button>
+
+              {isDimensionsOpen && (
+                <div className="space-y-3.5 pt-1 animate-in fade-in duration-200">
+                  {/* Kashida Slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-neutral-400">
+                      <span>میزان کشیدگی (مد / کشیده):</span>
+                      <span className="font-mono text-amber-400 font-bold">
+                        {selectedElement ? (selectedElement.kashidaLevel || 0) : kashidaLevel}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="8"
+                      value={selectedElement ? (selectedElement.kashidaLevel || 0) : kashidaLevel}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (selectedElement) {
+                          onUpdateElement(selectedElement.id, { kashidaLevel: val });
+                        } else {
+                          setKashidaLevel(val);
+                        }
+                      }}
+                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min="-80"
-                    max="80"
-                    value={selectedElement.baselineShift || 0}
-                    onChange={(e) => {
-                      onUpdateElement(selectedElement.id, { baselineShift: Number(e.target.value) });
-                    }}
-                    className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
-                  />
+
+                  {/* Font Size */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-neutral-400">
+                      <span>دانگ و ضخامت قلم (اندازه):</span>
+                      <span className="font-mono text-amber-400 font-bold">
+                        {selectedElement ? selectedElement.fontSize : fontSize} px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="16"
+                      max="180"
+                      value={selectedElement ? selectedElement.fontSize : fontSize}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (selectedElement) {
+                          onUpdateElement(selectedElement.id, { fontSize: val });
+                        } else {
+                          setFontSize(val);
+                        }
+                      }}
+                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Baseline Vertical Shift */}
+                  {selectedElement && (
+                    <div className="space-y-1.5 pt-1 border-t border-neutral-800">
+                      <div className="flex justify-between text-xs text-neutral-400">
+                        <span>سوار کردن / جابجایی خط کرسی:</span>
+                        <span className="font-mono text-amber-400 font-bold">
+                          {selectedElement.baselineShift || 0} px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-80"
+                        max="80"
+                        value={selectedElement.baselineShift || 0}
+                        onChange={(e) => {
+                          onUpdateElement(selectedElement.id, { baselineShift: Number(e.target.value) });
+                        }}
+                        className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {/* Color Wheel & Traditional Inks */}
+                  <div className="pt-2 border-t border-neutral-800">
+                    <ColorWheelPicker
+                      color={selectedElement ? (selectedElement.color || textColor) : textColor}
+                      onChange={(newColor) => {
+                        setTextColor(newColor);
+                        if (selectedElement) {
+                          onUpdateElement(selectedElement.id, { color: newColor });
+                        }
+                      }}
+                      goldEffect={selectedElement?.goldEffect || false}
+                      onToggleGoldEffect={selectedElement ? () => {
+                        onUpdateElement(selectedElement.id, { goldEffect: !selectedElement.goldEffect });
+                      } : undefined}
+                      title="دایره انتخاب رنگ و مرکب کلمه"
+                      showPresets={true}
+                      compact={false}
+                      wordsList={selectedElement && selectedElement.text && selectedElement.type !== 'dot' && selectedElement.type !== 'tazhib' && selectedElement.text.trim().includes(' ')
+                        ? selectedElement.text.trim().split(/\s+/).map(w => ({ text: w, color: selectedElement.color || textColor }))
+                        : undefined
+                      }
+                      onSplitToColoredWords={onDirectSplit}
+                    />
+                  </div>
                 </div>
               )}
-
-              {/* Color Wheel & Traditional Inks */}
-              <div className="pt-2 border-t border-neutral-800">
-                <ColorWheelPicker
-                  color={selectedElement ? (selectedElement.color || textColor) : textColor}
-                  onChange={(newColor) => {
-                    setTextColor(newColor);
-                    if (selectedElement) {
-                      onUpdateElement(selectedElement.id, { color: newColor });
-                    }
-                  }}
-                  goldEffect={selectedElement?.goldEffect || false}
-                  onToggleGoldEffect={selectedElement ? () => {
-                    onUpdateElement(selectedElement.id, { goldEffect: !selectedElement.goldEffect });
-                  } : undefined}
-                  title="دایره انتخاب رنگ و مرکب کلمه"
-                  showPresets={true}
-                  compact={false}
-                  wordsList={selectedElement && selectedElement.text && selectedElement.type !== 'dot' && selectedElement.type !== 'tazhib' && selectedElement.text.trim().includes(' ')
-                    ? selectedElement.text.trim().split(/\s+/).map(w => ({ text: w, color: selectedElement.color || textColor }))
-                    : undefined
-                  }
-                  onSplitToColoredWords={onDirectSplit}
-                />
-              </div>
             </div>
           </div>
         )}
@@ -1140,10 +1474,10 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                 {onDetachDots && (
                   <button
                     onClick={() => onDetachDots(selectedElement.id)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-700/30 hover:from-amber-600/50 hover:to-amber-700/50 text-amber-300 border border-amber-500/50 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98"
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-700/30 hover:from-amber-600/50 hover:to-amber-700/50 text-amber-300 border border-amber-500/50 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 cursor-pointer"
                   >
                     <Diamond className="w-4 h-4 text-amber-400" />
-                    <span>⚡ جداسازی تمام نقطه‌ها به المان‌های مستقل</span>
+                    <span>⚡ استخراج نقطه‌ها به المان آزاد (کلمه سالم می‌ماند)</span>
                   </button>
                 )}
 
@@ -1156,12 +1490,12 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                       { id: 'connected_line', label: 'خطی پیوسته' },
                       { id: 'horizontal', label: 'افقی جفتی' },
                       { id: 'vertical_stack', label: 'ستونی عمودی' },
-                      { id: 'hidden', label: 'حذف نقطه‌ها (کهن)' },
+                      { id: 'hidden', label: 'حذف اعراب' },
                     ].map((arr) => (
                       <button
                         key={arr.id}
                         onClick={() => onUpdateElement(selectedElement.id, { dotArrangement: arr.id as DotArrangementType })}
-                        className={`p-2 rounded-xl border text-xs font-vazir text-center transition-all ${
+                        className={`p-2 rounded-xl border text-xs font-vazir text-center transition-all cursor-pointer ${
                           (selectedElement.dotArrangement || 'standard') === arr.id
                             ? 'bg-amber-500/25 text-amber-300 border-amber-500 font-bold shadow-sm'
                             : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
@@ -1173,37 +1507,15 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
                   </div>
                 </div>
 
-                {/* Dot Fine Offsets */}
-                <div className="space-y-2 pt-2 border-t border-neutral-800">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[11px] text-neutral-400">
-                      <span>جابجایی افقی نقاط:</span>
-                      <span className="font-mono text-amber-400">{selectedElement.dotOffsetX || 0} px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-60"
-                      max="60"
-                      value={selectedElement.dotOffsetX || 0}
-                      onChange={(e) => onUpdateElement(selectedElement.id, { dotOffsetX: Number(e.target.value) })}
-                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
-                    />
+                {/* Guidance for Moving Dots Independently */}
+                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-[11px] text-neutral-300 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>جابجایی آزاد و مستقل نقطه‌ها:</span>
                   </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[11px] text-neutral-400">
-                      <span>جابجایی عمودی نقاط:</span>
-                      <span className="font-mono text-amber-400">{selectedElement.dotOffsetY || 0} px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-60"
-                      max="60"
-                      value={selectedElement.dotOffsetY || 0}
-                      onChange={(e) => onUpdateElement(selectedElement.id, { dotOffsetY: Number(e.target.value) })}
-                      className="w-full accent-amber-500 bg-neutral-800 h-1.5 rounded-lg cursor-pointer"
-                    />
-                  </div>
+                  <p className="text-neutral-400 leading-relaxed text-[11px]">
+                    کلمه اصلی بدون کوچک‌ترین تغییر یا به هم ریختگی باقی می‌ماند و نقطه‌ها به صورت المان‌های مستقل بر روی بوم قرار می‌گیرند تا بتوانید آزادانه با ماوس یا کلیدهای ۴ جهت کیبورد آن‌ها را جابجا کنید.
+                  </p>
                 </div>
               </div>
             )}
@@ -1228,21 +1540,148 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = React.memo(({
               </div>
             </div>
 
-            {/* Diacritics & Tashkeel */}
-            <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-3">
-              <span className="text-xs text-neutral-300 font-bold block">اعراب، تزیینات و نشانه‌ها:</span>
-              <div className="grid grid-cols-4 gap-2">
-                {CALLIGRAPHY_DIACRITICS.map((item) => (
+            {/* Diacritics, Harakat & Calligraphic Ornaments - Expanded Studio */}
+            <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-neutral-200 font-bold block">گنجینه جامع اعراب و نشانه‌های خوشنویسی:</span>
+                  <span className="text-[10px] text-neutral-400">کلیک روی هر علامت برای درج آزاد و شناور روی بوم</span>
+                </div>
+                <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                  {CALLIGRAPHY_DIACRITICS.length} نشانه
+                </span>
+              </div>
+
+              {/* Controls: Scale & Color */}
+              <div className="p-2.5 rounded-xl bg-neutral-950/70 border border-neutral-800 space-y-2.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-neutral-400">اندازه درج علامت:</span>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { mul: 0.75, label: 'ریز' },
+                      { mul: 1.0, label: 'متوسط' },
+                      { mul: 1.4, label: 'درشت' },
+                      { mul: 1.9, label: 'کتیبه' },
+                    ].map(s => (
+                      <button
+                        key={s.label}
+                        type="button"
+                        onClick={() => setDiacriticScaleMultiplier(s.mul)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                          diacriticScaleMultiplier === s.mul
+                            ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                            : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-neutral-400">رنگ جوهر علامت:</span>
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { color: '', label: 'هم‌رنگ متن', border: 'border-neutral-600' },
+                      { color: '#d97706', label: 'طلایی', border: 'border-amber-500' },
+                      { color: '#991b1b', label: 'شنگرف', border: 'border-red-600' },
+                      { color: '#1e3a8a', label: 'لاجورد', border: 'border-blue-700' },
+                      { color: '#064e3b', label: 'زنگار', border: 'border-emerald-700' },
+                    ].map(c => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        onClick={() => setDiacriticCustomColor(c.color)}
+                        title={c.label}
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${
+                          diacriticCustomColor === c.color ? 'ring-2 ring-amber-400 scale-110' : 'opacity-70 hover:opacity-100'
+                        } ${c.border}`}
+                        style={{ background: c.color || (selectedElement ? selectedElement.color : textColor) }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Category Filter Tabs */}
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { id: 'all', label: 'همه نشانه‌ها' },
+                  { id: 'harakat', label: 'حرکات و تنوین' },
+                  { id: 'compound', label: 'ترکیب‌های ثلث' },
+                  { id: 'ornament', label: 'گل و تزیینات' },
+                  { id: 'symbol', label: 'شعر و ادبیات' },
+                  { id: 'sacred', label: 'صلوات و کتیبه' },
+                ].map(cat => (
                   <button
-                    key={item.name}
-                    onClick={() => handleInsertDiacritic(item.char)}
-                    className="p-2 rounded-xl bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 hover:border-amber-500/40 transition-all text-center flex flex-col items-center gap-1"
-                    title={item.name}
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setDiacriticCategoryFilter(cat.id as any)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all ${
+                      diacriticCategoryFilter === cat.id
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
+                        : 'bg-neutral-950 text-neutral-400 hover:text-neutral-200 border border-neutral-850'
+                    }`}
                   >
-                    <span className="text-xl text-amber-400 font-thuluth leading-none">{item.char}</span>
-                    <span className="text-[10px] text-neutral-400 truncate w-full">{item.name}</span>
+                    {cat.label}
                   </button>
                 ))}
+              </div>
+
+              {/* Live Search */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={diacriticSearch}
+                  onChange={(e) => setDiacriticSearch(e.target.value)}
+                  placeholder="جستجو در نام یا علامت (مانند: فتحه، تشدید، مصرع، ترنج، آیه)..."
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:outline-none focus:border-amber-500/50"
+                />
+                {diacriticSearch && (
+                  <button
+                    onClick={() => setDiacriticSearch('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-500 hover:text-neutral-300"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Grid of Calligraphic Diacritics */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[360px] overflow-y-auto no-scrollbar p-0.5">
+                {CALLIGRAPHY_DIACRITICS
+                  .filter(item => {
+                    if (diacriticCategoryFilter === 'harakat') {
+                      return item.category === 'harakat' || item.category === 'tanween';
+                    }
+                    if (diacriticCategoryFilter !== 'all' && item.category !== diacriticCategoryFilter) {
+                      return false;
+                    }
+                    if (diacriticSearch.trim()) {
+                      const q = diacriticSearch.trim().toLowerCase();
+                      return item.name.toLowerCase().includes(q) || item.char.includes(q) || item.scriptRecommended.toLowerCase().includes(q);
+                    }
+                    return true;
+                  })
+                  .map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleInsertDiacritic(item.char)}
+                      className="p-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 hover:border-amber-500/50 transition-all text-center flex flex-col items-center justify-between gap-1.5 group cursor-pointer active:scale-95 shadow-sm"
+                      title={`${item.name} (${item.scriptRecommended})`}
+                    >
+                      <span className="text-2xl text-amber-400 group-hover:scale-125 transition-transform duration-200 font-thuluth leading-none py-1">
+                        {item.char}
+                      </span>
+                      <span className="text-[10px] text-neutral-300 font-medium truncate w-full group-hover:text-amber-300">
+                        {item.name}
+                      </span>
+                      <span className="text-[8px] text-neutral-500 truncate w-full">
+                        {item.scriptRecommended}
+                      </span>
+                    </button>
+                  ))}
               </div>
             </div>
           </div>

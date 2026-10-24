@@ -51,12 +51,12 @@ export const AlternateGlyphsModal: React.FC<AlternateGlyphsModalProps> = React.m
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4 backdrop-blur-md select-none font-vazir animate-in fade-in">
-      <div className="bg-neutral-950 border border-amber-500/30 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-neutral-200">
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3 sm:p-4 backdrop-blur-md select-none font-vazir animate-in fade-in duration-200">
+      <div className="bg-neutral-900 border border-amber-500/40 w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl shadow-amber-500/10 flex flex-col overflow-hidden text-neutral-100">
         {/* Header */}
-        <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-900/70">
+        <div className="p-4 sm:p-5 px-6 border-b border-neutral-800/90 flex items-center justify-between bg-neutral-950/70">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-600/20 text-amber-400 border border-amber-500/30">
+            <div className="p-2.5 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-sm">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
@@ -70,7 +70,8 @@ export const AlternateGlyphsModal: React.FC<AlternateGlyphsModalProps> = React.m
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-850 rounded-xl transition-all"
+            className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
+            title="بستن"
           >
             <X className="w-5 h-5" />
           </button>

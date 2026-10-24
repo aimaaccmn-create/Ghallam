@@ -46,7 +46,7 @@ export const WordSplittingModal: React.FC<WordSplittingModalProps> = React.memo(
   }, [isOpen, selectedElement]);
 
   const script = selectedElement?.script || globalScript;
-  const fontCss = SCRIPT_FONT_MAP[script]?.cssFamily || 'IranNastaliq, serif';
+  const fontCss = selectedElement?.fontFamily || SCRIPT_FONT_MAP[script]?.cssFamily || 'IranNastaliq, serif';
 
   const decomposedParts = useMemo(() => {
     if (!inputText.trim()) return [];
@@ -72,18 +72,39 @@ export const WordSplittingModal: React.FC<WordSplittingModalProps> = React.memo(
     const baseY = selectedElement ? selectedElement.y : 300;
     const fontSize = selectedElement ? selectedElement.fontSize : 52;
     const color = selectedElement ? selectedElement.color : '#18181b';
+    const customFont = selectedElement?.fontFamily;
 
     let newElements: CanvasElement[] = [];
 
     if (splitMode === 'words') {
-      newElements = splitTextIntoWords(inputText, script, baseX, baseY, fontSize, color);
+      newElements = splitTextIntoWords(inputText, script, baseX, baseY, fontSize, color, customFont);
     } else if (splitMode === 'letters') {
-      newElements = decomposeIntoLetters(inputText, script, baseX, baseY, fontSize, color);
+      newElements = decomposeIntoLetters(inputText, script, baseX, baseY, fontSize, color, customFont);
     } else {
-      newElements = decomposePersianWord(inputText, script, baseX, baseY, fontSize, color);
+      newElements = decomposePersianWord(inputText, script, baseX, baseY, fontSize, color, customFont);
     }
 
     if (newElements.length === 0) return;
+
+    // Inherit visual styles from parent selectedElement
+    if (selectedElement) {
+      newElements = newElements.map((part, idx) => ({
+        ...part,
+        fontFamily: selectedElement.fontFamily || part.fontFamily,
+        rotation: selectedElement.rotation || 0,
+        scaleX: selectedElement.scaleX ?? 1,
+        scaleY: selectedElement.scaleY ?? 1,
+        opacity: selectedElement.opacity ?? 1,
+        goldEffect: selectedElement.goldEffect,
+        textureFill: selectedElement.textureFill,
+        outlineEnabled: selectedElement.outlineEnabled,
+        outlineWidth: selectedElement.outlineWidth,
+        outlineColor: selectedElement.outlineColor,
+        shadowColor: selectedElement.shadowColor,
+        shadowBlur: selectedElement.shadowBlur,
+        zIndex: (selectedElement.zIndex || 10) + idx,
+      }));
+    }
 
     const replaceFn = onReplaceWithSplitWords || onReplaceElementWithParts;
     if (selectedElement && replaceFn) {
@@ -101,12 +122,12 @@ export const WordSplittingModal: React.FC<WordSplittingModalProps> = React.memo(
   const parts = previewParts();
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 dir-rtl font-vazir select-none">
-      <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 dir-rtl font-vazir select-none animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-neutral-900 border border-amber-500/40 rounded-3xl overflow-hidden shadow-2xl shadow-amber-500/10 flex flex-col text-neutral-100">
         {/* Header */}
-        <div className="p-4 px-6 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/40">
+        <div className="p-5 px-6 border-b border-neutral-800/90 flex items-center justify-between bg-neutral-950/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <div className="p-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-sm">
               <Scissors className="w-5 h-5" />
             </div>
             <div>
@@ -120,7 +141,8 @@ export const WordSplittingModal: React.FC<WordSplittingModalProps> = React.memo(
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-all"
+            className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
+            title="بستن"
           >
             <X className="w-5 h-5" />
           </button>

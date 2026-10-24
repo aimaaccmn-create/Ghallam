@@ -14,8 +14,9 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { CanvasElement, PaperTextureType, EbruPaperSettings, FrameBorderType } from '../types/calligraphy';
-import { SCRIPT_FONT_MAP, generateReedPenRibbonPath, generateTextCurvePath, applyKashida } from '../utils/calligraphyEngine';
-import { TAZHIB_COLLECTION } from '../data/tazhibAssets';
+import { SCRIPT_FONT_MAP, generateReedPenRibbonPath, applyKashida } from '../utils/calligraphyEngine';
+import { getTextureCssStyle, getOutlineCssStyle } from '../utils/calligraphyEffects';
+import { TAZHIB_COLLECTION, TAZHIB_MAP, DOT_PRESETS_MAP } from '../data/tazhibAssets';
 
 interface ZenPresentationModeProps {
   isOpen: boolean;
@@ -143,6 +144,24 @@ export const ZenPresentationMode: React.FC<ZenPresentationModeProps> = React.mem
             }}
           />
 
+          {/* Traditional Frame Borders */}
+          {frameBorder === 'classic_gold' && (
+            <div className="absolute inset-4 border-2 border-amber-600/70 pointer-events-none rounded">
+              <div className="absolute inset-1.5 border border-amber-600/40" />
+            </div>
+          )}
+          {frameBorder === 'tazhib_full' && (
+            <div className="absolute inset-6 border-[3px] border-amber-500 pointer-events-none rounded">
+              <div className="absolute inset-2 border border-amber-400/60" />
+              <div className="absolute inset-3.5 border-2 border-amber-600/70" />
+            </div>
+          )}
+          {frameBorder === 'chlipa_traditional' && (
+            <div className="absolute inset-8 border-2 border-amber-800/60 pointer-events-none">
+              <div className="absolute inset-1 border border-amber-700/40" />
+            </div>
+          )}
+
           {/* Render Elements */}
           {elements.map(el => {
             if (el.isVisible === false) return null;
@@ -150,12 +169,14 @@ export const ZenPresentationMode: React.FC<ZenPresentationModeProps> = React.mem
             if (el.type === 'stroke' && el.strokeData) {
               const strokePath = generateReedPenRibbonPath(
                 el.strokeData.points,
-                el.strokeData.nibWidth,
-                el.strokeData.nibAngle
+                el.strokeData.nibAngle,
+                el.strokeData.nibWidth
               );
               return (
                 <svg
                   key={el.id}
+                  width={canvasWidth}
+                  height={canvasHeight}
                   className="absolute inset-0 pointer-events-none"
                   style={{ zIndex: el.zIndex || 1 }}
                 >
@@ -168,12 +189,45 @@ export const ZenPresentationMode: React.FC<ZenPresentationModeProps> = React.mem
               );
             }
 
-            if (el.type === 'tazhib') {
-              const tazhibItem = TAZHIB_COLLECTION.find(t => t.id === el.tazhibName);
+            if (el.type === 'dot') {
+              const dotSize = Math.max(18, Math.round((el.fontSize || 24) * 0.9));
+              const dotColor = el.goldEffect ? '#d97706' : (el.color || '#18181b');
+              const preset = el.dotPreset ? DOT_PRESETS_MAP.get(el.dotPreset) : null;
               return (
                 <div
                   key={el.id}
-                  className="absolute pointer-events-none"
+                  className="absolute pointer-events-none flex items-center justify-center"
+                  style={{
+                    left: `${el.x}px`,
+                    top: `${el.y}px`,
+                    width: `${dotSize}px`,
+                    height: `${dotSize}px`,
+                    transform: `translate(-50%, -50%) rotate(${el.rotation || 0}deg) scale(${el.scaleX || 1}, ${el.scaleY || 1})`,
+                    color: dotColor,
+                    opacity: el.opacity ?? 1,
+                    zIndex: (el.zIndex || 10) + 20,
+                  }}
+                >
+                  {preset ? (
+                    <div
+                      className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                      dangerouslySetInnerHTML={{ __html: preset.svg }}
+                    />
+                  ) : (
+                    <svg viewBox="0 0 30 30" className="w-full h-full">
+                      <polygon points="15,2 28,15 15,28 2,15" fill={dotColor} />
+                    </svg>
+                  )}
+                </div>
+              );
+            }
+
+            if (el.type === 'tazhib') {
+              const tazhibItem = TAZHIB_MAP.get(el.tazhibName || '') || TAZHIB_COLLECTION.find(t => t.id === el.tazhibName);
+              return (
+                <div
+                  key={el.id}
+                  className="absolute pointer-events-none flex items-center justify-center"
                   style={{
                     left: `${el.x}px`,
                     top: `${el.y}px`,
@@ -184,32 +238,50 @@ export const ZenPresentationMode: React.FC<ZenPresentationModeProps> = React.mem
                     zIndex: el.zIndex || 1,
                   }}
                 >
-                  <svg viewBox={tazhibItem?.viewBox || '0 0 100 100'} className="w-full h-full">
-                    <path d={tazhibItem?.path || ''} fill={el.color || '#d97706'} />
-                  </svg>
+                  {tazhibItem ? (
+                    <svg viewBox={tazhibItem.viewBox} className="w-full h-full">
+                      <path d={tazhibItem.path} fill={el.color || tazhibItem.defaultColor || '#d97706'} />
+                    </svg>
+                  ) : el.tazhibSvg ? (
+                    <div
+                      className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                      style={{ color: el.color || '#d97706', fill: el.color || '#d97706' }}
+                      dangerouslySetInnerHTML={{ __html: el.tazhibSvg }}
+                    />
+                  ) : null}
                 </div>
               );
             }
 
             // Text elements
-            const displayText = el.text ? applyKashida(el.text, el.kashidaLevel || 0) : '';
+            const displayText = (el.kashidaLevel || el.dotKashidaUnits)
+              ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
+              : (el.text || '');
+            const textureStyle = getTextureCssStyle(el.textureFill, el.color);
+            const outlineStyle = getOutlineCssStyle(el.outlineEnabled, el.outlineWidth, el.outlineColor, el.outlineStyle);
+
             return (
               <div
                 key={el.id}
-                className="absolute pointer-events-none select-none text-center whitespace-nowrap"
+                className={`absolute pointer-events-none select-none text-center whitespace-pre dir-rtl ${
+                  el.goldEffect && !el.textureFill
+                    ? 'bg-gradient-to-r from-amber-300 via-yellow-500 to-amber-600 bg-clip-text text-transparent'
+                    : ''
+                }`}
                 style={{
                   left: `${el.x}px`,
                   top: `${el.y}px`,
                   transform: `translate(-50%, -50%) rotate(${el.rotation || 0}deg) scale(${el.scaleX || 1}, ${el.scaleY || 1})`,
                   fontSize: `${el.fontSize}px`,
-                  fontFamily: el.fontFamily || (el.script ? SCRIPT_FONT_MAP[el.script]?.cssFamily : 'inherit'),
-                  color: el.color || '#18181b',
+                  fontFamily: el.fontFamily || (el.script ? SCRIPT_FONT_MAP[el.script]?.cssFamily : 'IranNastaliq, serif'),
                   opacity: el.opacity ?? 1,
                   letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined,
                   zIndex: el.zIndex || 1,
-                  textShadow: enableGoldShimmer && el.color?.includes('#d9') 
-                    ? '0 0 15px rgba(245,158,11,0.4)' 
+                  textShadow: enableGoldShimmer && (el.goldEffect || el.color?.includes('#d9'))
+                    ? '0 0 15px rgba(245,158,11,0.4)'
                     : undefined,
+                  ...textureStyle,
+                  ...outlineStyle,
                 }}
               >
                 {displayText}

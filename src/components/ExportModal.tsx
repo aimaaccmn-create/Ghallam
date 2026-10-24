@@ -13,7 +13,9 @@ import {
   Sparkles,
   Cpu,
   FileText,
-  Loader2
+  Loader2,
+  Crown,
+  ShieldCheck
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { KelkProject } from '../types/calligraphy';
@@ -23,6 +25,13 @@ import {
   exportColorSeparationSvg,
   renderProjectToCanvas 
 } from '../utils/calligraphyEngine';
+import { 
+  TrialState, 
+  getOrInitializeTrialState, 
+  consumeExportCredit 
+} from '../utils/trialVault';
+import { TrialUpgradeModal } from './TrialUpgradeModal';
+import { AdminPanelModal } from './AdminPanelModal';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -46,7 +55,32 @@ export const ExportModal: React.FC<ExportModalProps> = React.memo(({
   const [copiedSvg, setCopiedSvg] = useState(false);
   const [separationLayer, setSeparationLayer] = useState<'black_ink' | 'gold_foil' | 'red_seal' | 'blue_tazhib'>('black_ink');
 
+  // Trial & VIP State
+  const [trialState, setTrialState] = useState<TrialState | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+
+  // Initialize trial vault on modal open
+  React.useEffect(() => {
+    if (isOpen) {
+      getOrInitializeTrialState().then(setTrialState);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  // Gate check before performing any file download
+  const checkQuotaAndProceed = async (action: () => Promise<void> | void) => {
+    const result = await consumeExportCredit();
+    setTrialState(result.state);
+
+    if (!result.allowed) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    await action();
+  };
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -66,146 +100,172 @@ export const ExportModal: React.FC<ExportModalProps> = React.memo(({
 
   // 1. Download SVG Vector File
   const handleDownloadSvg = () => {
-    const svgContent = exportToSvg(project);
-    downloadTextFile(svgContent, `${project.name || 'kelk_calligraphy'}.svg`, 'image/svg+xml;charset=utf-8');
+    checkQuotaAndProceed(() => {
+      const svgContent = exportToSvg(project);
+      downloadTextFile(svgContent, `${project.name || 'kelk_calligraphy'}.svg`, 'image/svg+xml;charset=utf-8');
+    });
   };
 
   // 2. Download CAM / CNC Laser Cut file
   const handleDownloadCncSvg = () => {
-    const svgContent = exportToCamCncSvg(project);
-    downloadTextFile(svgContent, `${project.name || 'kelk_calligraphy'}_laser_cnc.svg`, 'image/svg+xml;charset=utf-8');
+    checkQuotaAndProceed(() => {
+      const svgContent = exportToCamCncSvg(project);
+      downloadTextFile(svgContent, `${project.name || 'kelk_calligraphy'}_laser_cnc.svg`, 'image/svg+xml;charset=utf-8');
+    });
   };
 
   // 3. Download Color Separated Film
   const handleDownloadSeparationSvg = () => {
-    const svgContent = exportColorSeparationSvg(project, separationLayer);
-    downloadTextFile(svgContent, `${project.name || 'kelk_calligraphy'}_film_${separationLayer}.svg`, 'image/svg+xml;charset=utf-8');
+    checkQuotaAndProceed(() => {
+      const svgContent = exportColorSeparationSvg(project, separationLayer);
+      downloadTextFile(svgContent, `${project.name || 'kelk_calligraphy'}_film_${separationLayer}.svg`, 'image/svg+xml;charset=utf-8');
+    });
   };
 
   // 4. Copy SVG Code to Clipboard
   const handleCopySvgCode = async () => {
-    try {
-      const svgContent = activeTab === 'cnc' ? exportToCamCncSvg(project) : exportToSvg(project);
-      await navigator.clipboard.writeText(svgContent);
-      setCopiedSvg(true);
-      setTimeout(() => setCopiedSvg(false), 2500);
-    } catch (err) {
-      console.error('Failed to copy SVG code', err);
-    }
+    checkQuotaAndProceed(async () => {
+      try {
+        const svgContent = activeTab === 'cnc' ? exportToCamCncSvg(project) : exportToSvg(project);
+        await navigator.clipboard.writeText(svgContent);
+        setCopiedSvg(true);
+        setTimeout(() => setCopiedSvg(false), 2500);
+      } catch (err) {
+        console.error('Failed to copy SVG code', err);
+      }
+    });
   };
 
   // 5. Direct Bulletproof Raster Export (PNG, JPG, WebP)
   const handleDownloadRaster = async (format: 'png' | 'jpeg' | 'webp') => {
-    try {
-      setExporting(true);
-      setExportProgress(10);
-      setExportStatusText(
-        format === 'png' ? 'در حال رندر و ساخت تصویر باکیفیت PNG...' :
-        format === 'jpeg' ? 'در حال رندر و پردازش تصویر JPG...' : 'در حال رندر تصویر WebP...'
-      );
+    checkQuotaAndProceed(async () => {
+      try {
+        setExporting(true);
+        setExportProgress(10);
+        setExportStatusText(
+          format === 'png' ? 'در حال رندر و ساخت تصویر باکیفیت PNG...' :
+          format === 'jpeg' ? 'در حال رندر و پردازش تصویر JPG...' : 'در حال رندر تصویر WebP...'
+        );
 
-      // Render directly to in-memory HTML5 Canvas 2D with progress
-      const isTransparent = transparentBg && format !== 'jpeg';
-      const canvas = await renderProjectToCanvas(
-        project, 
-        resolutionScale, 
-        isTransparent,
-        (progress, status) => {
-          setExportProgress(progress);
-          setExportStatusText(status);
-        }
-      );
+        // Render directly to in-memory HTML5 Canvas 2D with progress
+        const isTransparent = transparentBg && format !== 'jpeg';
+        const canvas = await renderProjectToCanvas(
+          project, 
+          resolutionScale, 
+          isTransparent,
+          (progress, status) => {
+            setExportProgress(progress);
+            setExportStatusText(status);
+          }
+        );
 
-      setExportProgress(95);
-      setExportStatusText('در حال فشرده‌سازی و دانلود فایل...');
+        setExportProgress(95);
+        setExportStatusText('در حال فشرده‌سازی و دانلود فایل...');
 
-      const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
-      const ext = format === 'jpeg' ? 'jpg' : format;
-      const quality = format === 'jpeg' ? 0.96 : 0.95;
+        const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+        const ext = format === 'jpeg' ? 'jpg' : format;
+        const quality = format === 'jpeg' ? 0.96 : 0.95;
 
-      canvas.toBlob((blob) => {
-        if (blob) {
-          downloadBlob(blob, `${project.name || 'kelk_calligraphy'}_${resolutionScale}x.${ext}`);
-        } else {
-          // Fallback via data URL
-          const dataUrl = canvas.toDataURL(mimeType, quality);
-          const link = document.createElement('a');
-          link.href = dataUrl;
-          link.download = `${project.name || 'kelk_calligraphy'}_${resolutionScale}x.${ext}`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }
+        canvas.toBlob((blob) => {
+          if (blob) {
+            downloadBlob(blob, `${project.name || 'kelk_calligraphy'}_${resolutionScale}x.${ext}`);
+          } else {
+            // Fallback via data URL
+            const dataUrl = canvas.toDataURL(mimeType, quality);
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `${project.name || 'kelk_calligraphy'}_${resolutionScale}x.${ext}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          setExportProgress(100);
+          setTimeout(() => {
+            setExporting(false);
+            setExportStatusText('');
+            setExportProgress(0);
+          }, 400);
+        }, mimeType, quality);
+      } catch (err) {
+        console.error('Raster export failed:', err);
+        setExportStatusText('خطا در رندر تصویر. لطفاً مجدداً امتحان نمایید.');
+        setTimeout(() => {
+          setExporting(false);
+          setExportStatusText('');
+          setExportProgress(0);
+        }, 2500);
+      }
+    });
+  };
+
+  // 6. Direct High-Resolution PDF Export
+  const handleDownloadPdf = async () => {
+    checkQuotaAndProceed(async () => {
+      try {
+        setExporting(true);
+        setExportProgress(15);
+        setExportStatusText('در حال آماده‌سازی سند PDF با رزولوشن چاپ...');
+
+        const scale = Math.max(2, resolutionScale);
+        const canvas = await renderProjectToCanvas(
+          project, 
+          scale, 
+          false,
+          (progress, status) => {
+            setExportProgress(progress);
+            setExportStatusText(status);
+          }
+        );
+        setExportProgress(90);
+        setExportStatusText('در حال ساخت صفحات PDF...');
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.98);
+
+        const orientation = project.canvasWidth >= project.canvasHeight ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({
+          orientation,
+          unit: 'px',
+          format: [project.canvasWidth, project.canvasHeight],
+          hotfixes: ['px_scaling'],
+        });
+
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, project.canvasWidth, project.canvasHeight);
+        pdf.save(`${project.name || 'kelk_calligraphy'}.pdf`);
+
         setExportProgress(100);
         setTimeout(() => {
           setExporting(false);
           setExportStatusText('');
           setExportProgress(0);
         }, 400);
-      }, mimeType, quality);
-    } catch (err) {
-      console.error('Raster export failed:', err);
-      alert('خطا در رندر تصویر. لطفاً مجدداً امتحان نمایید.');
-      setExporting(false);
-      setExportStatusText('');
-      setExportProgress(0);
-    }
+      } catch (err) {
+        console.error('PDF export failed:', err);
+        setExportStatusText('خطا در ساخت فایل PDF. لطفاً مجدداً تلاش کنید.');
+        setTimeout(() => {
+          setExporting(false);
+          setExportStatusText('');
+          setExportProgress(0);
+        }, 2500);
+      }
+    });
   };
 
-  // 6. Direct High-Resolution PDF Export
-  const handleDownloadPdf = async () => {
-    try {
-      setExporting(true);
-      setExportProgress(15);
-      setExportStatusText('در حال آماده‌سازی سند PDF با رزولوشن چاپ...');
-
-      const scale = Math.max(2, resolutionScale);
-      const canvas = await renderProjectToCanvas(
-        project, 
-        scale, 
-        false,
-        (progress, status) => {
-          setExportProgress(progress);
-          setExportStatusText(status);
-        }
-      );
-      setExportProgress(90);
-      setExportStatusText('در حال ساخت صفحات PDF...');
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.98);
-
-      const orientation = project.canvasWidth >= project.canvasHeight ? 'landscape' : 'portrait';
-      const pdf = new jsPDF({
-        orientation,
-        unit: 'px',
-        format: [project.canvasWidth, project.canvasHeight],
-        hotfixes: ['px_scaling'],
-      });
-
-      pdf.addImage(dataUrl, 'JPEG', 0, 0, project.canvasWidth, project.canvasHeight);
-      pdf.save(`${project.name || 'kelk_calligraphy'}.pdf`);
-
-      setExportProgress(100);
-      setTimeout(() => {
-        setExporting(false);
-        setExportStatusText('');
-        setExportProgress(0);
-      }, 400);
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      alert('خطا در ساخت فایل PDF');
-      setExporting(false);
-      setExportStatusText('');
-      setExportProgress(0);
-    }
-  };
-
-  // 7. Print Calligraphy
+  // 7. Print Calligraphy via Embedded Print Iframe (No Popup Blocker or window.open)
   const handlePrint = () => {
     const svgContent = exportToSvg(project);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(`
         <!DOCTYPE html>
         <html dir="rtl">
           <head>
@@ -220,13 +280,17 @@ export const ExportModal: React.FC<ExportModalProps> = React.memo(({
           </head>
           <body>
             ${svgContent}
-            <script>
-              window.onload = () => { window.print(); window.close(); }
-            </script>
           </body>
         </html>
       `);
-      printWindow.document.close();
+      doc.close();
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1500);
+      }, 250);
     }
   };
 
@@ -240,7 +304,26 @@ export const ExportModal: React.FC<ExportModalProps> = React.memo(({
               <Download className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-bold text-base text-neutral-100">خروجی تخصصی چاپ، تصویر، PDF و برش لیزر</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-base text-neutral-100">خروجی تخصصی چاپ، تصویر، PDF و برش لیزر</h2>
+                {trialState && (
+                  trialState.isVip ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[11px] font-bold">
+                      <Crown className="w-3 h-3 text-amber-400" />
+                      نامحدود VIP
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setShowUpgradeModal(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-neutral-800 hover:bg-neutral-700 border border-amber-500/40 text-amber-300 text-[11px] font-bold cursor-pointer transition-colors"
+                      title="مشاهده جزئیات تست رایگان و فعال‌سازی لایسنس"
+                    >
+                      <span>تست رایگان: {Math.max(0, trialState.freeExportsAllowed - trialState.exportsUsed)} خروجی باقی‌مانده</span>
+                      <Crown className="w-3 h-3 text-amber-400 ml-0.5" />
+                    </button>
+                  )
+                )}
+              </div>
               <p className="text-xs text-neutral-400">دانلود فرمت‌های PNG، JPG، PDF، SVG، فیلم تفکیک رنگ و CNC</p>
             </div>
           </div>
@@ -552,6 +635,31 @@ export const ExportModal: React.FC<ExportModalProps> = React.memo(({
           )}
         </div>
       </div>
+
+      {/* Trial Upgrade & VIP Modal */}
+      {showUpgradeModal && trialState && (
+        <TrialUpgradeModal
+          isOpen={showUpgradeModal}
+          onClose={() => setShowUpgradeModal(false)}
+          trialState={trialState}
+          onActivated={(updatedState) => {
+            setTrialState(updatedState);
+          }}
+          onOpenAdminPanel={() => setShowAdminModal(true)}
+        />
+      )}
+
+      {/* Admin Panel Modal */}
+      {showAdminModal && trialState && (
+        <AdminPanelModal
+          isOpen={showAdminModal}
+          onClose={() => setShowAdminModal(false)}
+          trialState={trialState}
+          onTrialStateUpdated={(updatedState) => {
+            setTrialState(updatedState);
+          }}
+        />
+      )}
     </div>
   );
 });

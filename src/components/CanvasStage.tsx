@@ -38,7 +38,11 @@ import {
   Trash2,
   Copy,
   X,
-  Layers2
+  Layers2,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignHorizontalSpaceAround,
+  Check
 } from 'lucide-react';
 
 export interface SnapGuideLine {
@@ -203,6 +207,24 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
   const [isDraggingActive, setIsDraggingActive] = useState(false);
   const [isRotatingActive, setIsRotatingActive] = useState(false);
 
+  // Active corner scaling ref
+  const scaleTrackerRef = useRef<{
+    elementId: string;
+    element: CanvasElement;
+    domNode: HTMLElement | null;
+    centerX: number;
+    centerY: number;
+    initialDist: number;
+    initialScaleX: number;
+    initialScaleY: number;
+    lastScaleX?: number;
+    lastScaleY?: number;
+  } | null>(null);
+
+  // Double-click inline text editing state
+  const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  const [editingTextValue, setEditingTextValue] = useState<string>('');
+
   // Multi-touch pinch zoom state for viewport
   const pinchStateRef = useRef<{ initialDistance: number; initialZoom: number } | null>(null);
 
@@ -222,6 +244,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
     }
     longPressStartPosRef.current = null;
   }, []);
+
+  useEffect(() => {
+    return () => cancelLongPress();
+  }, [cancelLongPress]);
 
   // Selected element helper
   const selectedElement = elements.find(el => el.id === selectedElementId);
@@ -278,38 +304,81 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
     };
   }, [handleAutoFit]);
 
-  // Keyboard navigation & shortcuts
+  // Keyboard navigation & shortcuts (supports multi-selection & anchored dots)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedElementId) return;
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
 
-      const el = elements.find(item => item.id === selectedElementId);
-      if (!el || el.isLocked) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const allVisibleIds = elements.filter(item => item.isVisible !== false && !item.isLocked).map(item => item.id);
+        updateMultiIds(allVisibleIds);
+        if (allVisibleIds.length > 0 && !selectedElementId) {
+          onSelectElement(allVisibleIds[0]);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setEditingElementId(null);
+        updateMultiIds([]);
+        onSelectElement(null);
+        return;
+      }
+
+      if (!selectedElementId && selectedMultiIds.length === 0) return;
 
       const step = e.shiftKey ? 10 : 2;
+      let dx = 0;
+      let dy = 0;
+      if (e.key === 'ArrowUp') dy = -step;
+      else if (e.key === 'ArrowDown') dy = step;
+      else if (e.key === 'ArrowLeft') dx = -step;
+      else if (e.key === 'Right' || e.key === 'ArrowRight') dx = step;
 
-      if (e.key === 'ArrowUp') {
+      if (dx !== 0 || dy !== 0) {
         e.preventDefault();
-        onUpdateElement(selectedElementId, { y: el.y - step });
-      } else if (e.key === 'ArrowDown') {
+        const activeIds = selectedMultiIds.length > 1
+          ? selectedMultiIds
+          : selectedElementId ? [selectedElementId] : [];
+        const idsToMove = new Set<string>(activeIds);
+        // Include any anchored dots whose parent is being moved
+        elements.forEach(item => {
+          if (item.parentAnchorId && idsToMove.has(item.parentAnchorId) && !item.isLocked) {
+            idsToMove.add(item.id);
+          }
+        });
+
+        const updates: Array<{ id: string; updates: Partial<CanvasElement> }> = [];
+        idsToMove.forEach(id => {
+          const item = elements.find(el => el.id === id);
+          if (item && !item.isLocked) {
+            updates.push({ id, updates: { x: item.x + dx, y: item.y + dy } });
+          }
+        });
+
+        if (updates.length > 0) {
+          if (onUpdateBatchElements) {
+            onUpdateBatchElements(updates, false);
+          } else {
+            updates.forEach(u => onUpdateElement(u.id, u.updates, false));
+          }
+        }
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        onUpdateElement(selectedElementId, { y: el.y + step });
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        onUpdateElement(selectedElementId, { x: el.x - step });
-      } else if (e.key === 'Right' || e.key === 'ArrowRight') {
-        e.preventDefault();
-        onUpdateElement(selectedElementId, { x: el.x + step });
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        onDeleteElement(selectedElementId);
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onSelectElement(null);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        if (selectedMultiIds.length > 1) {
+          selectedMultiIds.forEach(id => onDeleteElement(id));
+          updateMultiIds([]);
+        } else if (selectedElementId) {
+          onDeleteElement(selectedElementId);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && selectedElementId) {
         e.preventDefault();
         onDuplicateElement(selectedElementId);
       }
@@ -317,7 +386,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementId, elements, onUpdateElement, onDeleteElement, onSelectElement, onDuplicateElement]);
+  }, [selectedElementId, selectedMultiIds, elements, onUpdateElement, onUpdateBatchElements, onDeleteElement, onSelectElement, onDuplicateElement, updateMultiIds]);
 
   // Move element target coordinates with high-speed O(1) spatial snapping & tandem multi-selection (for keyboard / D-Pad nudge)
   const moveElementTo = useCallback((targetX: number, targetY: number, elementId: string) => {
@@ -371,7 +440,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
       }
     } else {
       // Move anchored children synchronously (Smart Tashkeel Anchoring)
-      const anchored = elements.filter(otherEl => otherEl.parentAnchorId === elementId && !otherEl.isLocked);
+      const anchored = el.type !== 'dot'
+        ? elements.filter(otherEl => otherEl.parentAnchorId === elementId && !otherEl.isLocked)
+        : [];
       if (anchored.length > 0 && onUpdateBatchElements) {
         const updates = [
           { id: elementId, updates: { x: finalX, y: finalY } },
@@ -461,7 +532,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
           const t = tracker.targets[i];
           if (t.domNode) {
             t.domNode.style.transform = `translate3d(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px), 0) rotate(${t.rotation}deg) scale(${t.scaleX}, ${t.scaleY}) ${t.stepSkew}`;
-            t.domNode.style.zIndex = '9999';
           }
         }
         return;
@@ -484,10 +554,36 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
 
         if (tracker.domNode && tracker.element) {
           const el = tracker.element;
-          const verticalScale = el.verticalKashida || 1;
+          const verticalScale = (el.verticalKashida || 1) * (el.dastehHeight || 1);
+          const horizontalScale = el.dayerehDepth || 1;
+          const totalRot = newRotation + (el.sarkeshAngle ? el.sarkeshAngle * 0.25 : 0);
           const stepSkew = el.stepKashidaAngle ? `skewY(${el.stepKashidaAngle}deg)` : '';
-          tracker.domNode.style.transform = `translate3d(-50%, -50%, 0) rotate(${newRotation}deg) scale(${el.scaleX}, ${el.scaleY * verticalScale}) ${stepSkew}`;
-          tracker.domNode.style.zIndex = '9999';
+          tracker.domNode.style.transform = `translate3d(-50%, -50%, 0) rotate(${totalRot}deg) scale(${(el.scaleX || 1) * horizontalScale}, ${(el.scaleY || 1) * verticalScale}) ${stepSkew}`;
+        }
+        return;
+      }
+
+      // 4. Handle Corner Scaling via Direct Hardware Translation
+      if (scaleTrackerRef.current && containerRef.current) {
+        const tracker = scaleTrackerRef.current;
+        const canvasRect = containerRef.current.getBoundingClientRect();
+        const px = (e.clientX - canvasRect.left) / zoom;
+        const py = (e.clientY - canvasRect.top) / zoom;
+
+        const currentDist = Math.max(10, Math.hypot(px - tracker.centerX, py - tracker.centerY));
+        const ratio = currentDist / Math.max(10, tracker.initialDist);
+        const newScaleX = Math.max(0.25, Math.min(4, Number((tracker.initialScaleX * ratio).toFixed(2))));
+        const newScaleY = Math.max(0.25, Math.min(4, Number((tracker.initialScaleY * ratio).toFixed(2))));
+        tracker.lastScaleX = newScaleX;
+        tracker.lastScaleY = newScaleY;
+
+        if (tracker.domNode && tracker.element) {
+          const el = tracker.element;
+          const verticalScale = (el.verticalKashida || 1) * (el.dastehHeight || 1);
+          const horizontalScale = el.dayerehDepth || 1;
+          const totalRot = (el.rotation || 0) + (el.sarkeshAngle ? el.sarkeshAngle * 0.25 : 0);
+          const stepSkew = el.stepKashidaAngle ? `skewY(${el.stepKashidaAngle}deg)` : '';
+          tracker.domNode.style.transform = `translate3d(-50%, -50%, 0) rotate(${totalRot}deg) scale(${newScaleX * horizontalScale}, ${newScaleY * verticalScale}) ${stepSkew}`;
         }
         return;
       }
@@ -505,7 +601,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         }
       }
 
-      if (!dragTrackerRef.current && !rotateTrackerRef.current && !marquee) return;
+      if (!dragTrackerRef.current && !rotateTrackerRef.current && !scaleTrackerRef.current && !marquee) return;
       pendingPointerRef.current = e;
 
       if (rafIdRef.current === null) {
@@ -530,12 +626,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         const deltaX = tracker.lastDeltaX || 0;
         const deltaY = tracker.lastDeltaY || 0;
 
-        // 1. Reset inline overrides on all manipulated DOM nodes
+        // 1. Seamlessly apply final coordinates to DOM nodes so there is NO flicker, NO snapping back, and NO dropping effect
         const len = tracker.targets.length;
         for (let i = 0; i < len; i++) {
           const t = tracker.targets[i];
           if (t.domNode) {
-            t.domNode.style.transform = '';
+            t.domNode.style.left = `${t.initialX + deltaX}px`;
+            t.domNode.style.top = `${t.initialY + deltaY}px`;
+            t.domNode.style.transform = `translate(-50%, -50%) rotate(${t.rotation}deg) scale(${t.scaleX}, ${t.scaleY}) ${t.stepSkew}`;
             t.domNode.style.zIndex = '';
           }
         }
@@ -578,6 +676,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         }
         rotateTrackerRef.current = null;
         setIsRotatingActive(false);
+      }
+
+      if (scaleTrackerRef.current) {
+        const tracker = scaleTrackerRef.current;
+        if (tracker.domNode) {
+          tracker.domNode.style.transform = '';
+          tracker.domNode.style.zIndex = '';
+        }
+        if (tracker.lastScaleX !== undefined && tracker.lastScaleY !== undefined) {
+          onUpdateElement(tracker.elementId, { scaleX: tracker.lastScaleX, scaleY: tracker.lastScaleY }, false);
+        }
+        scaleTrackerRef.current = null;
       }
 
       if (marquee) {
@@ -664,8 +774,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
       let movingIds: string[] = [element.id];
       if (selectedMultiIds.includes(element.id) && selectedMultiIds.length > 1) {
         movingIds = selectedMultiIds;
-      } else {
-        // Synchronously collect anchored elements
+      } else if (element.type !== 'dot') {
+        // Synchronously collect anchored elements ONLY when dragging parent text/word (never when moving a dot!)
         elements.forEach(otherEl => {
           if (otherEl.parentAnchorId === element.id) {
             movingIds.push(otherEl.id);
@@ -678,7 +788,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         const item = elements.find(elItem => elItem.id === id);
         if (item && !item.isLocked) {
           const domNode = document.getElementById(`el_${item.id}`);
-          const verticalScale = item.verticalKashida || 1;
+          const verticalScale = (item.verticalKashida || 1) * (item.dastehHeight || 1);
+          const horizontalScale = item.dayerehDepth || 1;
+          const totalRot = (item.rotation || 0) + (item.sarkeshAngle ? item.sarkeshAngle * 0.25 : 0);
           const stepSkew = item.stepKashidaAngle ? `skewY(${item.stepKashidaAngle}deg)` : '';
           targets.push({
             id: item.id,
@@ -686,8 +798,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
             domNode,
             initialX: item.x,
             initialY: item.y,
-            rotation: item.rotation || 0,
-            scaleX: item.scaleX || 1,
+            rotation: totalRot,
+            scaleX: (item.scaleX || 1) * horizontalScale,
             scaleY: (item.scaleY || 1) * verticalScale,
             stepSkew,
           });
@@ -751,6 +863,37 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
         initialElemRotation: el.rotation || 0,
         initialAngle,
         lastRotation: el.rotation || 0,
+      };
+    }
+  };
+
+  // Corner Scale Handle Pointer Down
+  const handleScalePointerDown = (e: React.PointerEvent, el: CanvasElement) => {
+    cancelLongPress();
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    } catch (err) {}
+    onRecordHistory?.();
+
+    const canvasRect = containerRef.current?.getBoundingClientRect();
+    if (canvasRect) {
+      const px = (e.clientX - canvasRect.left) / zoom;
+      const py = (e.clientY - canvasRect.top) / zoom;
+      const initialDist = Math.max(15, Math.hypot(px - el.x, py - el.y));
+      const domNode = document.getElementById(`el_${el.id}`);
+
+      scaleTrackerRef.current = {
+        elementId: el.id,
+        element: el,
+        domNode,
+        centerX: el.x,
+        centerY: el.y,
+        initialDist,
+        initialScaleX: el.scaleX || 1,
+        initialScaleY: el.scaleY || 1,
+        lastScaleX: el.scaleX || 1,
+        lastScaleY: el.scaleY || 1,
       };
     }
   };
@@ -1026,29 +1169,143 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
             </div>
           )}
 
-          {/* Guidelines: Millimeter Grid */}
+          {/* Guidelines: Minimal Precision Millimeter Grid (Item #9) */}
           {showGrid && (
-            <div className="absolute inset-0 bg-grid-pattern-light pointer-events-none opacity-60" />
+            <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
+              <svg width="100%" height="100%" className="w-full h-full opacity-40">
+                <defs>
+                  <pattern id="minimalGridMinor" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <line x1="0" y1="0" x2="20" y2="0" stroke="#d97706" strokeWidth="0.5" strokeOpacity="0.25" />
+                    <line x1="0" y1="0" x2="0" y2="20" stroke="#d97706" strokeWidth="0.5" strokeOpacity="0.25" />
+                  </pattern>
+                  <pattern id="minimalGridMajor" width="100" height="100" patternUnits="userSpaceOnUse">
+                    <rect width="100" height="100" fill="url(#minimalGridMinor)" />
+                    <line x1="0" y1="0" x2="100" y2="0" stroke="#d97706" strokeWidth="1" strokeOpacity="0.45" />
+                    <line x1="0" y1="0" x2="0" y2="100" stroke="#d97706" strokeWidth="1" strokeOpacity="0.45" />
+                    <circle cx="0" cy="0" r="1.5" fill="#d97706" fillOpacity="0.7" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#minimalGridMajor)" />
+              </svg>
+            </div>
           )}
 
-          {/* Guidelines: Traditional Korsi lines */}
+          {/* Guidelines: Traditional Calligraphic Korsi Lines (Item #9 Minimal & Elegant) */}
           {showKorsi && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
               {layoutMode === 'chlipa' ? (
-                <svg width="100%" height="100%" className="opacity-30">
-                  <line x1="100" y1="180" x2="800" y2="330" stroke="#d97706" strokeWidth="1" strokeDasharray="5,5" />
-                  <line x1="100" y1="280" x2="800" y2="430" stroke="#d97706" strokeWidth="1" strokeDasharray="5,5" />
-                  <line x1="100" y1="380" x2="800" y2="530" stroke="#d97706" strokeWidth="1" strokeDasharray="5,5" />
-                  <line x1="100" y1="480" x2="800" y2="630" stroke="#d97706" strokeWidth="1" strokeDasharray="5,5" />
+                <svg width="100%" height="100%" className="w-full h-full">
+                  <g opacity="0.45">
+                    {[0.22, 0.40, 0.60, 0.78].map((ratio, idx) => {
+                      const y1 = height * ratio - 45;
+                      const y2 = height * ratio + 45;
+                      return (
+                        <g key={idx}>
+                          <line
+                            x1={width * 0.08}
+                            y1={y1}
+                            x2={width * 0.92}
+                            y2={y2}
+                            stroke="#d97706"
+                            strokeWidth="1"
+                            strokeDasharray="6,4"
+                          />
+                          <text
+                            x={width * 0.92 - 10}
+                            y={y2 - 6}
+                            fill="#d97706"
+                            fontSize="10"
+                            fontFamily="sans-serif"
+                            textAnchor="end"
+                            className="font-vazir font-semibold select-none"
+                          >
+                            کرسی مصرع {idx + 1}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
                 </svg>
               ) : (
-                <div className="w-full h-full flex flex-col justify-around opacity-30">
-                  <div className="w-full border-b border-dashed border-amber-600" />
-                  <div className="w-full border-b border-dashed border-amber-600" />
-                  <div className="w-full border-b border-dashed border-amber-600" />
-                  <div className="w-full border-b border-dashed border-amber-600" />
-                  <div className="w-full border-b border-dashed border-amber-600" />
-                </div>
+                <svg width="100%" height="100%" className="w-full h-full">
+                  <g opacity="0.6">
+                    {/* Main Vasat Baseline */}
+                    <line
+                      x1="20"
+                      y1={height / 2}
+                      x2={width - 20}
+                      y2={height / 2}
+                      stroke="#d97706"
+                      strokeWidth="1.2"
+                    />
+                    <text
+                      x="30"
+                      y={height / 2 - 6}
+                      fill="#d97706"
+                      fontSize="10"
+                      fontFamily="sans-serif"
+                      className="font-vazir font-bold select-none"
+                    >
+                      خط کرسی زمینه
+                    </text>
+
+                    {/* Mabda (Upper line for Alifs & Kaafs) */}
+                    <line
+                      x1="20"
+                      y1={height / 2 - 75}
+                      x2={width - 20}
+                      y2={height / 2 - 75}
+                      stroke="#f59e0b"
+                      strokeWidth="0.8"
+                      strokeDasharray="5,4"
+                      strokeOpacity="0.85"
+                    />
+                    <text
+                      x="30"
+                      y={height / 2 - 81}
+                      fill="#f59e0b"
+                      fontSize="9"
+                      fontFamily="sans-serif"
+                      className="font-vazir opacity-80 select-none"
+                    >
+                      خط مبدأ (الف‌ها و سرکش‌ها)
+                    </text>
+
+                    {/* Forood (Lower line for Noon/Lam descenders) */}
+                    <line
+                      x1="20"
+                      y1={height / 2 + 75}
+                      x2={width - 20}
+                      y2={height / 2 + 75}
+                      stroke="#b45309"
+                      strokeWidth="0.8"
+                      strokeDasharray="4,4"
+                      strokeOpacity="0.85"
+                    />
+                    <text
+                      x="30"
+                      y={height / 2 + 69}
+                      fill="#b45309"
+                      fontSize="9"
+                      fontFamily="sans-serif"
+                      className="font-vazir opacity-80 select-none"
+                    >
+                      خط فرود (دایره‌ها)
+                    </text>
+
+                    {/* Center Vertical Axis */}
+                    <line
+                      x1={width / 2}
+                      y1="20"
+                      x2={width / 2}
+                      y2={height - 20}
+                      stroke="#d97706"
+                      strokeWidth="0.6"
+                      strokeDasharray="3,3"
+                      strokeOpacity="0.45"
+                    />
+                  </g>
+                </svg>
               )}
             </div>
           )}
@@ -1135,7 +1392,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
             const textureStyle = getTextureCssStyle(el.textureFill, el.color);
             const outlineStyle = getOutlineCssStyle(el.outlineEnabled, el.outlineWidth, el.outlineColor, el.outlineStyle);
 
-            const verticalScale = el.verticalKashida || 1;
+            const verticalScale = (el.verticalKashida || 1) * (el.dastehHeight || 1);
+            const horizontalScale = el.dayerehDepth || 1;
+            const totalRotation = (el.rotation || 0) + (el.sarkeshAngle ? el.sarkeshAngle * 0.25 : 0);
             const stepSkew = el.stepKashidaAngle ? `skewY(${el.stepKashidaAngle}deg)` : '';
 
             return (
@@ -1152,6 +1411,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                   }
                   onSelectElement(el.id);
                 }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  if (!el.isLocked && (el.type === 'word' || el.type === 'text' || el.type === 'seal')) {
+                    setEditingElementId(el.id);
+                    setEditingTextValue(el.text || '');
+                  }
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1163,10 +1429,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                 onPointerDown={(e) => handlePointerDownElement(e, el)}
                 style={{
                   position: 'absolute',
-                  left: `${el.x + (el.dotOffsetX || 0)}px`,
-                  top: `${el.y + (el.dotOffsetY || 0)}px`,
-                  transform: `translate(-50%, -50%) rotate(${el.rotation}deg) scale(${el.scaleX}, ${el.scaleY * verticalScale}) ${stepSkew}`,
-                  zIndex: isSelected ? 99 : isMultiSelected ? 95 : el.zIndex,
+                  left: `${el.x}px`,
+                  top: `${el.y}px`,
+                  transform: `translate(-50%, -50%) rotate(${totalRotation}deg) scale(${(el.scaleX || 1) * horizontalScale}, ${(el.scaleY || 1) * verticalScale}) ${stepSkew}`,
+                  zIndex: isSelected ? 120 : isMultiSelected ? 115 : el.type === 'dot' ? ((el.zIndex || 10) + 20) : el.zIndex,
                   cursor: el.isLocked ? 'not-allowed' : (isBeingDragged ? 'grabbing' : 'grab'),
                   opacity: el.opacity,
                   touchAction: 'none',
@@ -1177,7 +1443,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                 }}
                 className={`group select-none min-w-[36px] min-h-[36px] p-1.5 sm:p-2 rounded-xl flex items-center justify-center ${
                   isSelected 
-                    ? 'ring-2 ring-amber-500/90 bg-amber-500/10 shadow-lg shadow-amber-950/20' 
+                    ? 'ring-2 ring-amber-500/90 bg-amber-500/10' 
                     : isMultiSelected
                     ? 'ring-2 ring-amber-400/60 bg-amber-500/5'
                     : 'hover:ring-1 hover:ring-amber-500/40 hover:bg-amber-500/5'
@@ -1304,16 +1570,27 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                     );
                   })()
                 ) : el.type === 'tazhib' ? (
-                  // 3. Tazhib Ornament
-                  <div style={{ width: el.width || 80, height: el.height || 80 }} className="pointer-events-none">
+                  // 3. Tazhib Ornament or Custom Imported Vector SVG
+                  <div style={{ width: el.width || 80, height: el.height || 80 }} className="pointer-events-none flex items-center justify-center">
                     {(() => {
                       const item = TAZHIB_MAP.get(el.tazhibName || '');
-                      if (!item) return <div className="text-xs text-amber-500">تذهیب</div>;
-                      return (
-                        <svg viewBox={item.viewBox} className="w-full h-full drop-shadow-sm">
-                          <path d={item.path} fill={el.color || item.defaultColor || '#d97706'} />
-                        </svg>
-                      );
+                      if (item) {
+                        return (
+                          <svg viewBox={item.viewBox} className="w-full h-full drop-shadow-sm">
+                            <path d={item.path} fill={el.color || item.defaultColor || '#d97706'} />
+                          </svg>
+                        );
+                      }
+                      if (el.tazhibSvg) {
+                        return (
+                          <div
+                            className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full drop-shadow-sm"
+                            style={{ color: el.color || '#d97706', fill: el.color || '#d97706' }}
+                            dangerouslySetInnerHTML={{ __html: el.tazhibSvg }}
+                          />
+                        );
+                      }
+                      return <div className="text-xs text-amber-500">تذهیب</div>;
                     })()}
                   </div>
                 ) : el.type === 'dot' ? (
@@ -1548,10 +1825,90 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                         </div>
                       </>
                     )}
+                    {/* Sub-Glyph Calligraphic Accents (Serkash & Tail Ending) */}
+                    {el.serkashStyle && el.serkashStyle !== 'classic' && (
+                      <svg
+                        viewBox="0 0 60 24"
+                        className="absolute -top-4 right-1 w-10 h-5 pointer-events-none opacity-90"
+                      >
+                        {el.serkashStyle === 'extended' && (
+                          <path d="M 55,18 L 10,5 L 18,1" fill="none" stroke={el.color || '#18181b'} strokeWidth="2.5" strokeLinecap="round" />
+                        )}
+                        {el.serkashStyle === 'detached' && (
+                          <path d="M 52,14 Q 28,1 6,9" fill="none" stroke={el.color || '#18181b'} strokeWidth="2.5" strokeLinecap="round" />
+                        )}
+                        {el.serkashStyle === 'double' && (
+                          <>
+                            <path d="M 55,18 L 12,8" fill="none" stroke={el.color || '#18181b'} strokeWidth="2.2" strokeLinecap="round" />
+                            <path d="M 50,12 L 16,3" fill="none" stroke={el.color || '#18181b'} strokeWidth="1.8" strokeLinecap="round" />
+                          </>
+                        )}
+                      </svg>
+                    )}
+
+                    {el.tailEnding && el.tailEnding !== 'standard' && (
+                      <svg
+                        viewBox="0 0 60 24"
+                        className="absolute -bottom-3 left-0 w-10 h-5 pointer-events-none opacity-90"
+                      >
+                        {(el.tailEnding === 'shamshiri' || el.tailEnding === 'khanjari') && (
+                          <path d="M 55,6 Q 25,18 2,14" fill="none" stroke={el.color || '#18181b'} strokeWidth={el.tailEnding === 'khanjari' ? '3' : '2.2'} strokeLinecap="round" />
+                        )}
+                        {el.tailEnding === 'helali_curved' && (
+                          <path d="M 55,12 Q 20,20 6,4" fill="none" stroke={el.color || '#18181b'} strokeWidth="2.2" strokeLinecap="round" />
+                        )}
+                        {el.tailEnding === 'feathered' && (
+                          <circle cx="10" cy="12" r="3.5" fill={el.color || '#18181b'} />
+                        )}
+                      </svg>
+                    )}
                   </div>
                 )}
 
-                {/* Selection Handle & Touch-Optimized Rotation Handle */}
+                {/* Inline Double-Click Text Editor Overlay */}
+                {editingElementId === el.id && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="absolute inset-x-[-40px] -top-12 z-50 flex items-center gap-1 bg-neutral-950/95 border border-amber-500 rounded-xl p-1.5 shadow-2xl font-vazir"
+                  >
+                    <input
+                      type="text"
+                      value={editingTextValue}
+                      onChange={(e) => setEditingTextValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (editingTextValue.trim()) {
+                            onUpdateElement(el.id, { text: editingTextValue, originalText: editingTextValue }, true);
+                          }
+                          setEditingElementId(null);
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setEditingElementId(null);
+                        }
+                      }}
+                      autoFocus
+                      dir="rtl"
+                      className="bg-neutral-900 text-amber-100 text-xs px-2.5 py-1 rounded-lg border border-neutral-700 focus:outline-none focus:border-amber-400 min-w-[140px]"
+                      placeholder="ویرایش متن..."
+                    />
+                    <button
+                      onClick={() => {
+                        if (editingTextValue.trim()) {
+                          onUpdateElement(el.id, { text: editingTextValue, originalText: editingTextValue }, true);
+                        }
+                        setEditingElementId(null);
+                      }}
+                      className="p-1.5 rounded-lg bg-amber-500 text-neutral-950 hover:bg-amber-400 transition-colors"
+                      title="ثبت تغییرات (Enter)"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Selection Handle, Rotation Knob & Interactive Corner Resize Handle */}
                 {isSelected && !el.isLocked && (
                   <div className="absolute -inset-2 pointer-events-none">
                     {/* Top Rotation Knob with 44px touch area */}
@@ -1563,6 +1920,24 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
                       <div className="w-6 h-6 bg-amber-500 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-[10px] text-neutral-950 font-bold">
                         <RotateCw className="w-3.5 h-3.5" />
                       </div>
+                    </div>
+
+                    {/* Bottom-Left Corner Interactive Scale Handle */}
+                    <div
+                      onPointerDown={(e) => handleScalePointerDown(e, el)}
+                      className="absolute -bottom-3.5 -left-3.5 w-7 h-7 flex items-center justify-center pointer-events-auto cursor-nwse-resize hover:scale-110 active:scale-95 transition-transform touch-none"
+                      title="تغییر ابعاد با کشیدن گوشه (Scale)"
+                    >
+                      <div className="w-3.5 h-3.5 bg-white border-2 border-amber-600 rounded-sm shadow-md" />
+                    </div>
+
+                    {/* Bottom-Right Corner Interactive Scale Handle */}
+                    <div
+                      onPointerDown={(e) => handleScalePointerDown(e, el)}
+                      className="absolute -bottom-3.5 -right-3.5 w-7 h-7 flex items-center justify-center pointer-events-auto cursor-nesw-resize hover:scale-110 active:scale-95 transition-transform touch-none"
+                      title="تغییر ابعاد با کشیدن گوشه (Scale)"
+                    >
+                      <div className="w-3.5 h-3.5 bg-white border-2 border-amber-600 rounded-sm shadow-md" />
                     </div>
                   </div>
                 )}
@@ -1605,12 +1980,79 @@ export const CanvasStage: React.FC<CanvasStageProps> = React.memo(({
       {selectedMultiIds.length > 1 && (
         <div 
           onClick={(e) => e.stopPropagation()}
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-neutral-950/95 border border-amber-500/60 backdrop-blur-2xl px-3 py-2 rounded-2xl shadow-2xl flex items-center gap-2 font-vazir animate-in fade-in slide-in-from-top-3"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-neutral-950/95 border border-amber-500/60 backdrop-blur-2xl px-3 py-2 rounded-2xl shadow-2xl flex flex-wrap items-center justify-center gap-1.5 font-vazir animate-in fade-in slide-in-from-top-3 max-w-[95vw]"
         >
           <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-800 text-xs font-bold text-amber-300">
             <Layers2 className="w-4 h-4 text-amber-400" />
-            <span>{selectedMultiIds.length} عنصر انتخاب‌شده</span>
+            <span>{selectedMultiIds.length} لایه</span>
           </div>
+
+          {/* Align Korsi Baseline (Horizontal Row Alignment) */}
+          <button
+            onClick={() => {
+              const selectedEls = elements.filter(e => selectedMultiIds.includes(e.id) && !e.isLocked);
+              if (selectedEls.length < 2) return;
+              const avgY = Math.round(selectedEls.reduce((sum, item) => sum + item.y, 0) / selectedEls.length);
+              if (onUpdateBatchElements) {
+                onUpdateBatchElements(selectedEls.map(item => ({ id: item.id, updates: { y: avgY } })), true);
+              } else {
+                selectedEls.forEach(item => onUpdateElement(item.id, { y: avgY }, false));
+              }
+            }}
+            className="p-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 transition-all text-xs flex items-center gap-1 px-2"
+            title="تراز خط کرسی افقی (هم‌سطح کردن عمودی کلمات)"
+          >
+            <AlignCenterVertical className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">تراز کرسی</span>
+          </button>
+
+          {/* Align Vertical Center Axis */}
+          <button
+            onClick={() => {
+              const selectedEls = elements.filter(e => selectedMultiIds.includes(e.id) && !e.isLocked);
+              if (selectedEls.length < 2) return;
+              const avgX = Math.round(selectedEls.reduce((sum, item) => sum + item.x, 0) / selectedEls.length);
+              if (onUpdateBatchElements) {
+                onUpdateBatchElements(selectedEls.map(item => ({ id: item.id, updates: { x: avgX } })), true);
+              } else {
+                selectedEls.forEach(item => onUpdateElement(item.id, { x: avgX }, false));
+              }
+            }}
+            className="p-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 transition-all text-xs flex items-center gap-1 px-2"
+            title="تراز ستونی در محور عمودی مرکز"
+          >
+            <AlignCenterHorizontal className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">تراز ستونی</span>
+          </button>
+
+          {/* Distribute Horizontally Evenly */}
+          {selectedMultiIds.length >= 3 && (
+            <button
+              onClick={() => {
+                const selectedEls = elements
+                  .filter(e => selectedMultiIds.includes(e.id) && !e.isLocked)
+                  .sort((a, b) => a.x - b.x);
+                if (selectedEls.length < 3) return;
+                const minX = selectedEls[0].x;
+                const maxX = selectedEls[selectedEls.length - 1].x;
+                const step = (maxX - minX) / (selectedEls.length - 1);
+                const batch = selectedEls.map((item, idx) => ({
+                  id: item.id,
+                  updates: { x: Math.round(minX + idx * step) },
+                }));
+                if (onUpdateBatchElements) {
+                  onUpdateBatchElements(batch, true);
+                } else {
+                  batch.forEach(b => onUpdateElement(b.id, b.updates, false));
+                }
+              }}
+              className="p-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-amber-300 border border-neutral-800 transition-all text-xs flex items-center gap-1 px-2"
+              title="توزیع یکنواخت فاصله افقی بین کلمات"
+            >
+              <AlignHorizontalSpaceAround className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">توزیع فاصله</span>
+            </button>
+          )}
 
           {onGroupElements && (
             <button

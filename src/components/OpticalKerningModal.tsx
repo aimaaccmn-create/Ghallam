@@ -15,8 +15,10 @@ interface OpticalKerningModalProps {
   isOpen: boolean;
   onClose: () => void;
   elements: CanvasElement[];
-  onAutoBalanceKerning: (balanceStrength: number) => void;
-  onAlignBaselineRow: (spacing: number) => void;
+  onAutoBalanceKerning?: (balanceStrength: number) => void;
+  onAutoBalance?: (balanceStrength: number) => void;
+  onAlignBaselineRow?: (spacing: number) => void;
+  onAlignBaseline?: (spacing: number) => void;
 }
 
 export const OpticalKerningModal: React.FC<OpticalKerningModalProps> = ({
@@ -24,7 +26,9 @@ export const OpticalKerningModal: React.FC<OpticalKerningModalProps> = ({
   onClose,
   elements,
   onAutoBalanceKerning,
+  onAutoBalance,
   onAlignBaselineRow,
+  onAlignBaseline,
 }) => {
   const [balanceStrength, setBalanceStrength] = useState<number>(50);
   const [rowSpacing, setRowSpacing] = useState<number>(30);
@@ -35,13 +39,15 @@ export const OpticalKerningModal: React.FC<OpticalKerningModalProps> = ({
   const textElements = elements.filter(el => el.type === 'text' || el.type === 'word' || el.text);
 
   const handleApplyAutoBalance = () => {
-    onAutoBalanceKerning(balanceStrength);
+    const fn = onAutoBalanceKerning || onAutoBalance;
+    if (fn) fn(balanceStrength);
     setApplied(true);
     setTimeout(() => setApplied(false), 2000);
   };
 
   const handleApplyRowSpacing = () => {
-    onAlignBaselineRow(rowSpacing);
+    const fn = onAlignBaselineRow || onAlignBaseline;
+    if (fn) fn(rowSpacing);
     setApplied(true);
     setTimeout(() => setApplied(false), 2000);
   };

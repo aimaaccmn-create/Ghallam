@@ -85,37 +85,76 @@ export interface DiacriticItem {
   id: string;
   name: string;
   char: string;
-  category: 'harakat' | 'tanween' | 'ornament' | 'symbol';
+  category: 'harakat' | 'tanween' | 'compound' | 'symbol' | 'ornament' | 'sacred';
   scriptRecommended: string;
 }
 
 export const CALLIGRAPHY_DIACRITICS: DiacriticItem[] = [
-  // Harakat
-  { id: 'fatha', name: 'زبر (فتحه)', char: 'َ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'damma', name: 'پیش (ضمه)', char: 'ُ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'kasra', name: 'زیر (کسره)', char: 'ِ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'sukoon', name: 'سکون (جزم)', char: 'ْ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'shadda', name: 'تشدید', char: 'ّ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'tanwin_fath', name: 'تنوین نصب (ـاً)', char: 'ً', category: 'tanween', scriptRecommended: 'همه' },
-  { id: 'tanwin_damm', name: 'تنوین رفع (ـٌ)', char: 'ٌ', category: 'tanween', scriptRecommended: 'همه' },
-  { id: 'tanwin_kasr', name: 'تنوین جر (ـٍ)', char: 'ٍ', category: 'tanween', scriptRecommended: 'همه' },
-  { id: 'madda', name: 'مد روی الف (آ)', char: 'ٓ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'hamza_above', name: 'همزه بالا', char: 'ٔ', category: 'harakat', scriptRecommended: 'همه' },
-  { id: 'dagger_alif', name: 'الف مقصوره بالایی', char: 'ٰ', category: 'harakat', scriptRecommended: 'همه' },
+  // 1. حرکات اصلی (Core Harakat)
+  { id: 'fatha', name: 'زبر (فتحه)', char: 'َ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'damma', name: 'پیش (ضمه)', char: 'ُ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'kasra', name: 'زیر (کسره)', char: 'ِ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'sukoon', name: 'سکون (جزم)', char: 'ْ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'shadda', name: 'تشدید', char: 'ّ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'madda', name: 'مد روی الف (آ)', char: 'ٓ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'dagger_alif', name: 'الف مقصوره بالایی (رحمٰن)', char: 'ٰ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'hamza_above', name: 'همزه بالا', char: 'ٔ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'hamza_below', name: 'همزه زیرین (إ)', char: 'ٕ', category: 'harakat', scriptRecommended: 'همه خطوط' },
+  { id: 'inverted_damma', name: 'اشباع واو (ضمه مقلوبه)', char: 'ٗ', category: 'harakat', scriptRecommended: 'ثلث و نسخ' },
+  { id: 'subscript_alif', name: 'اشباع یاء (کسره عمودی)', char: 'ٖ', category: 'harakat', scriptRecommended: 'ثلث و نسخ' },
 
-  // Calligraphic Symbols & Marks (علائم سنتی)
-  { id: 'poetic_sign', name: 'علامت مصرع شعر (؏)', char: '؏', category: 'symbol', scriptRecommended: 'نستعلیق' },
-  { id: 'takhallus_sign', name: 'علامت تخلص شاعر (ؔ)', char: 'ؔ', category: 'symbol', scriptRecommended: 'نستعلیق' },
-  { id: 'sanah_sign', name: 'علامت سنه تاریخی (؁)', char: '؁', category: 'symbol', scriptRecommended: 'همه' },
-  { id: 'traditional_comma', name: 'ویرگول سنتی (،)', char: '،', category: 'symbol', scriptRecommended: 'همه' },
-  { id: 'star_eight', name: 'ستاره هشت‌پر زرین (۞)', char: '۞', category: 'ornament', scriptRecommended: 'ثلث' },
-  { id: 'end_of_ayah', name: 'علامت ختم آیه (۝)', char: '۝', category: 'ornament', scriptRecommended: 'ثلث' },
-  { id: 'rub_el_hizb', name: 'ربع الحزب (۩)', char: '۩', category: 'ornament', scriptRecommended: 'ثلث' },
-  { id: 'flower_ornament', name: 'گل‌بوته کوچک (❀)', char: '❀', category: 'ornament', scriptRecommended: 'همه' },
-  { id: 'leaf_ornament', name: 'برگ ختایی (❦)', char: '❦', category: 'ornament', scriptRecommended: 'همه' },
-  { id: 'swirl_ornament', name: 'پیچک ظریف (❧)', char: '❧', category: 'ornament', scriptRecommended: 'همه' },
-  { id: 'calligraphy_diamond', name: 'دانگ نقطه قلم (◆)', char: '◆', category: 'ornament', scriptRecommended: 'همه' },
-  { id: 'three_dots', name: 'سه نقطه تاجی (⁂)', char: '⁂', category: 'ornament', scriptRecommended: 'همه' },
+  // 2. تنوین‌ها (Tanween)
+  { id: 'tanwin_fath', name: 'تنوین نصب (ـاً)', char: 'ً', category: 'tanween', scriptRecommended: 'همه خطوط' },
+  { id: 'tanwin_damm', name: 'تنوین رفع (ـٌ)', char: 'ٌ', category: 'tanween', scriptRecommended: 'همه خطوط' },
+  { id: 'tanwin_kasr', name: 'تنوین جر (ـٍ)', char: 'ٍ', category: 'tanween', scriptRecommended: 'همه خطوط' },
+
+  // 3. ترکیب‌های پرطرفدار ثلث و نسخ (Compounds & Ligatures)
+  { id: 'shadda_fatha', name: 'تشدید با فتحه ( َّ )', char: 'َّ', category: 'compound', scriptRecommended: 'ثلث و نسخ' },
+  { id: 'shadda_damma', name: 'تشدید با ضمه ( ُّ )', char: 'ُّ', category: 'compound', scriptRecommended: 'ثلث و نسخ' },
+  { id: 'shadda_kasra', name: 'تشدید با کسره ( ِّ )', char: 'ِّ', category: 'compound', scriptRecommended: 'ثلث و نسخ' },
+  { id: 'shadda_tanwin_fath', name: 'تشدید با تنوین نصب ( ًّ )', char: 'ًّ', category: 'compound', scriptRecommended: 'ثلث' },
+  { id: 'shadda_tanwin_damm', name: 'تشدید با تنوین رفع ( ٌّ )', char: 'ٌّ', category: 'compound', scriptRecommended: 'ثلث' },
+  { id: 'tatweel_kashida', name: 'کشیده و تطویل کلمات (ـ)', char: 'ـ', category: 'compound', scriptRecommended: 'همه خطوط' },
+  { id: 'waqf_zulfi', name: 'سرکج و زلفی اتصال ( ۛ )', char: 'ۛ', category: 'compound', scriptRecommended: 'نستعلیق و ثلث' },
+  { id: 'alif_waslah', name: 'همزه وصل قرآنی (ٱ)', char: 'ٱ', category: 'compound', scriptRecommended: 'نسخ و ثلث' },
+
+  // 4. علائم ادبی، شعری و کتیبه‌ای (Poetry & Literary)
+  { id: 'poetic_sign', name: 'علامت مصرع شعر (؏)', char: '؏', category: 'symbol', scriptRecommended: 'نستعلیق و شکسته' },
+  { id: 'takhallus_sign', name: 'علامت تخلص شاعر (ؔ)', char: 'ؔ', category: 'symbol', scriptRecommended: 'نستعلیق و دیوانی' },
+  { id: 'sanah_sign', name: 'علامت سنه تاریخی (؁)', char: '؁', category: 'symbol', scriptRecommended: 'همه خطوط' },
+  { id: 'page_sign', name: 'علامت صفحه سنتی (؂)', char: '؂', category: 'symbol', scriptRecommended: 'نستعلیق و نسخ' },
+  { id: 'verse_sign', name: 'علامت بیت و کلام (؃)', char: '؃', category: 'symbol', scriptRecommended: 'نستعلیق' },
+  { id: 'bracket_ornate_right', name: 'پرانتز اسلیمی راست ( ﴾ )', char: '﴾', category: 'symbol', scriptRecommended: 'همه خطوط' },
+  { id: 'bracket_ornate_left', name: 'پرانتز اسلیمی چپ ( ﴿ )', char: '﴿', category: 'symbol', scriptRecommended: 'همه خطوط' },
+  { id: 'traditional_comma', name: 'ویرگول سنتی (،)', char: '،', category: 'symbol', scriptRecommended: 'همه خطوط' },
+  { id: 'traditional_semicolon', name: 'سجاوندی سنتی (؛)', char: '؛', category: 'symbol', scriptRecommended: 'همه خطوط' },
+  { id: 'waqf_jaiz', name: 'علامت وقف سنتی ( ۚ )', char: 'ۚ', category: 'symbol', scriptRecommended: 'نسخ و ثلث' },
+  { id: 'waqf_lazim', name: 'علامت وقف لازم ( ۘ )', char: 'ۘ', category: 'symbol', scriptRecommended: 'نسخ و ثلث' },
+
+  // 5. تزیینات ثلث و نقوش پرکننده کتیبه (Thuluth Ornaments & Fillers)
+  { id: 'end_of_ayah', name: 'گل ختم آیه و ترنج ثلث (۝)', char: '۝', category: 'ornament', scriptRecommended: 'ثلث و نسخ' },
+  { id: 'star_eight', name: 'ستاره هشت‌پر زرین (۞)', char: '۞', category: 'ornament', scriptRecommended: 'ثلث و نسخ' },
+  { id: 'rub_el_hizb', name: 'ربع الحزب کتیبه (۩)', char: '۩', category: 'ornament', scriptRecommended: 'ثلث' },
+  { id: 'calligraphy_diamond', name: 'دانگ نقطه قلم لوزی (◆)', char: '◆', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'hollow_diamond', name: 'دانگ لوزی میان‌تهی (◇)', char: '◇', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'three_dots', name: 'سه نقطه تاجی سنتی (⁂)', char: '⁂', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'rosette_gold', name: 'گل‌بوته شش‌پر زرین (❂)', char: '❂', category: 'ornament', scriptRecommended: 'کتیبه و ثلث' },
+  { id: 'flower_ornament', name: 'گل‌پنج‌پر سنتی (❀)', char: '❀', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'leaf_ornament', name: 'برگ ختایی اسلیمی (❦)', char: '❦', category: 'ornament', scriptRecommended: 'نستعلیق و ثلث' },
+  { id: 'swirl_ornament', name: 'پیچک ظریف خوشنویسی (❧)', char: '❧', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'star_four', name: 'ستاره زرین چهارپر (✦)', char: '✦', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'star_delicate', name: 'ستاره ظریف کتیبه (✧)', char: '✧', category: 'ornament', scriptRecommended: 'همه خطوط' },
+  { id: 'star_burst', name: 'شمسه هشت‌گوش (✵)', char: '✵', category: 'ornament', scriptRecommended: 'ثلث و محقق' },
+  { id: 'arabesque_knot', name: 'گره اسلیمی (✤)', char: '✤', category: 'ornament', scriptRecommended: 'کتیبه و ثلث' },
+  { id: 'toranj_knot', name: 'سرترنج اسلیمی (✥)', char: '✥', category: 'ornament', scriptRecommended: 'کتیبه و ثلث' },
+
+  // 6. صلوات‌ها و عبارات مقدسه کتیبه‌ای (Sacred Calligraphic Ligatures)
+  { id: 'basmalah', name: 'بسم الله الرحمن الرحیم (﷽)', char: '﷽', category: 'sacred', scriptRecommended: 'همه خطوط' },
+  { id: 'jalla_jalaluh', name: 'جل جلاله (ﷻ)', char: 'ﷻ', category: 'sacred', scriptRecommended: 'کتیبه و ثلث' },
+  { id: 'salawat', name: 'صلی الله علیه و آله (ﷺ)', char: 'ﷺ', category: 'sacred', scriptRecommended: 'همه خطوط' },
+  { id: 'alayhis_salam', name: 'علیه السلام (ؑ)', char: 'ؑ', category: 'sacred', scriptRecommended: 'همه خطوط' },
+  { id: 'radiyallahu_anh', name: 'رضی الله عنه (ؓ)', char: 'ؓ', category: 'sacred', scriptRecommended: 'همه خطوط' },
+  { id: 'rahmatullah_alayh', name: 'رحمه الله علیه (ؒ)', char: 'ؒ', category: 'sacred', scriptRecommended: 'همه خطوط' },
 ];
 
 // Special Persian Calligraphic Dot configurations

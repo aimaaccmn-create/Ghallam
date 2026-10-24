@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Award, Download, Printer, ShieldCheck, QrCode, Sparkles, Copy, Check } from 'lucide-react';
-import { CanvasElement, CalligraphyScript } from '../types/calligraphy';
+import { CanvasElement, CalligraphyScript, KelkProject } from '../types/calligraphy';
+import { renderProjectToCanvas } from '../utils/calligraphyEngine';
 import { SoundEngine } from '../utils/soundEffects';
 
 interface CertificateModalProps {
@@ -44,9 +45,210 @@ export const CertificateModal: React.FC<CertificateModalProps> = React.memo(({
     custom_font: 'خط اختصاصی هنرمند',
   };
 
-  const handlePrint = () => {
+  const buildCertificateCanvas = async (): Promise<HTMLCanvasElement | null> => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 850;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // 1. Parchment Background
+    ctx.fillStyle = '#faf5e8';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Texture tint
+    ctx.fillStyle = 'rgba(217, 119, 6, 0.04)';
+    for (let x = 0; x < canvas.width; x += 15) {
+      for (let y = 0; y < canvas.height; y += 15) {
+        if ((x + y) % 30 === 0) {
+          ctx.fillRect(x, y, 2, 2);
+        }
+      }
+    }
+
+    // 2. Ornate Double Gold Borders
+    ctx.strokeStyle = '#b45309';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(30, 30, canvas.width - 60, canvas.height - 60);
+
+    ctx.strokeStyle = '#ca8a04';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(44, 44, canvas.width - 88, canvas.height - 88);
+
+    ctx.strokeStyle = 'rgba(180, 83, 9, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(50, 50, canvas.width - 100, canvas.height - 100);
+
+    // 3. Header Text
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#854d0e';
+    ctx.font = 'bold 16px Vazirmatn, sans-serif';
+    ctx.fillText('سند ثبت رسمی اصالت اثر خوشنویسی', canvas.width / 2, 95);
+
+    ctx.fillStyle = '#78350f';
+    ctx.font = 'bold 36px "Aref Ruqaa", "Noto Nastaliq Urdu", serif';
+    ctx.fillText('گواهی‌نامه اصالت و مرقع هنری', canvas.width / 2, 145);
+
+    ctx.fillStyle = 'rgba(120, 53, 15, 0.7)';
+    ctx.font = '13px serif';
+    ctx.fillText('Certificate of Calligraphic Authenticity & Provenance', canvas.width / 2, 172);
+
+    // Divider line
+    ctx.strokeStyle = 'rgba(180, 83, 9, 0.3)';
+    ctx.beginPath();
+    ctx.moveTo(100, 195);
+    ctx.lineTo(canvas.width - 100, 195);
+    ctx.stroke();
+
+    // 4. Metadata Details (Right Side in RTL)
+    ctx.textAlign = 'right';
+    ctx.direction = 'rtl';
+    
+    const startX = canvas.width - 120;
+    let curY = 250;
+    const rowGap = 42;
+
+    const fields = [
+      { label: 'عنوان اثر:', value: artworkTitle },
+      { label: 'پدیدآورنده و خطاط:', value: artistName },
+      { label: 'سبک و شیوه نگارش:', value: scriptNames[globalScript] || 'خط فارسی' },
+      { label: 'ابعاد قطعه اصلی:', value: `${canvasWidth} × ${canvasHeight} پیکسل` },
+      { label: 'تکنیک و بستر:', value: techniqueDesc },
+      { label: 'تاریخ صدور و ثبت:', value: dateShamsi },
+      { label: 'شماره ثبت یکتا:', value: serialNumber },
+    ];
+
+    fields.forEach(f => {
+      ctx.fillStyle = '#78350f';
+      ctx.font = 'bold 16px Vazirmatn, sans-serif';
+      ctx.fillText(f.label, startX, curY);
+
+      ctx.fillStyle = '#1c1917';
+      ctx.font = '16px Vazirmatn, sans-serif';
+      ctx.fillText(f.value, startX - 170, curY);
+
+      ctx.strokeStyle = 'rgba(180, 83, 9, 0.15)';
+      ctx.beginPath();
+      ctx.moveTo(startX, curY + 12);
+      ctx.lineTo(startX - 500, curY + 12);
+      ctx.stroke();
+
+      curY += rowGap;
+    });
+
+    // 5. Artwork Preview Box (Left Side) - Render actual high-res miniature of the user's artwork!
+    const boxX = 110;
+    const boxY = 240;
+    const boxW = 400;
+    const boxH = 260;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+
+    try {
+      const tempProject: KelkProject = {
+        id: 'cert_preview',
+        name: artworkTitle,
+        createdAt: '',
+        updatedAt: '',
+        canvasWidth,
+        canvasHeight,
+        layoutMode: 'free',
+        paperTexture: 'parchment',
+        backgroundColor: '#faf5e8',
+        frameBorder: 'classic_gold',
+        elements,
+        penNibAngle: 63,
+        globalScript,
+      };
+      const artCanvas = await renderProjectToCanvas(tempProject, 1, false);
+      ctx.drawImage(artCanvas, boxX, boxY, boxW, boxH);
+    } catch {
+      ctx.fillStyle = '#18181b';
+      ctx.font = '32px IranNastaliq, Gulzar, serif';
+      ctx.textAlign = 'center';
+      const previewText = elements.find(e => e.type === 'text')?.text || artworkTitle;
+      ctx.fillText(previewText.slice(0, 35), boxX + boxW / 2, boxY + boxH / 2 + 10);
+    }
+
+    ctx.strokeStyle = '#ca8a04';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    // Stamp in Certificate
+    ctx.save();
+    ctx.translate(boxX + boxW / 2, boxY + boxH + 80);
+    ctx.rotate(-0.1);
+    ctx.fillStyle = 'rgba(153, 27, 27, 0.85)';
+    ctx.strokeStyle = 'rgba(153, 27, 27, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 45, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 15px IranNastaliq, serif';
+    ctx.fillText('مهر اصالت و ثبت', 0, -5);
+    ctx.font = '11px Vazirmatn, sans-serif';
+    ctx.fillText(serialNumber, 0, 18);
+    ctx.restore();
+
+    // 6. Footer Declaration
+    ctx.fillStyle = '#44403c';
+    ctx.font = '13px Vazirmatn, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('بدین‌وسیله گواهی می‌شود این اثر با رعایت اصول و هندسه خوشنویسی اصیل ایرانی خلق و در دفتر رسمی آثار ثبت شده است.', canvas.width / 2, canvas.height - 100);
+
+    ctx.fillStyle = '#78350f';
+    ctx.font = 'bold 18px IranNastaliq, serif';
+    ctx.fillText(`امضا و ترقیم: ${artistName}`, canvas.width / 2, canvas.height - 65);
+
+    return canvas;
+  };
+
+  const handlePrint = async () => {
     SoundEngine.playChime();
-    window.print();
+    try {
+      const canvas = await buildCertificateCanvas();
+      if (!canvas) return;
+      const dataUrl = canvas.toDataURL('image/png', 1.0);
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+
+      const frameDoc = printFrame.contentWindow?.document;
+      if (frameDoc) {
+        frameDoc.open();
+        frameDoc.write(`
+          <!DOCTYPE html>
+          <html dir="rtl" lang="fa">
+            <head>
+              <title>گواهی‌نامه اصالت اثر - ${serialNumber}</title>
+              <style>
+                @page { size: landscape; margin: 10mm; }
+                body { margin: 0; display: flex; justify-content: center; align-items: center; background: #fff; }
+                img { max-width: 100%; max-height: 95vh; object-fit: contain; }
+              </style>
+            </head>
+            <body>
+              <img src="${dataUrl}" onload="setTimeout(() => { window.focus(); window.print(); }, 250);" />
+            </body>
+          </html>
+        `);
+        frameDoc.close();
+        setTimeout(() => {
+          if (document.body.contains(printFrame)) {
+            document.body.removeChild(printFrame);
+          }
+        }, 10000);
+      }
+    } catch (err) {
+      console.error('Failed to print certificate:', err);
+    }
   };
 
   const handleCopyText = () => {
@@ -69,141 +271,8 @@ export const CertificateModal: React.FC<CertificateModalProps> = React.memo(({
   const handleDownloadImage = async () => {
     SoundEngine.playChime();
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1200;
-      canvas.height = 850;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // 1. Parchment Background
-      ctx.fillStyle = '#faf5e8';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Texture tint
-      ctx.fillStyle = 'rgba(217, 119, 6, 0.04)';
-      for (let x = 0; x < canvas.width; x += 15) {
-        for (let y = 0; y < canvas.height; y += 15) {
-          if ((x + y) % 30 === 0) {
-            ctx.fillRect(x, y, 2, 2);
-          }
-        }
-      }
-
-      // 2. Ornate Double Gold Borders
-      ctx.strokeStyle = '#b45309';
-      ctx.lineWidth = 6;
-      ctx.strokeRect(30, 30, canvas.width - 60, canvas.height - 60);
-
-      ctx.strokeStyle = '#ca8a04';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(44, 44, canvas.width - 88, canvas.height - 88);
-
-      ctx.strokeStyle = 'rgba(180, 83, 9, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(50, 50, canvas.width - 100, canvas.height - 100);
-
-      // 3. Header Text
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#854d0e';
-      ctx.font = 'bold 16px Vazirmatn, sans-serif';
-      ctx.fillText('سند ثبت رسمی اصالت اثر خوشنویسی', canvas.width / 2, 95);
-
-      ctx.fillStyle = '#78350f';
-      ctx.font = 'bold 36px "Aref Ruqaa", "Noto Nastaliq Urdu", serif';
-      ctx.fillText('گواهی‌نامه اصالت و مرقع هنری', canvas.width / 2, 145);
-
-      ctx.fillStyle = 'rgba(120, 53, 15, 0.7)';
-      ctx.font = '13px serif';
-      ctx.fillText('Certificate of Calligraphic Authenticity & Provenance', canvas.width / 2, 172);
-
-      // Divider line
-      ctx.strokeStyle = 'rgba(180, 83, 9, 0.3)';
-      ctx.beginPath();
-      ctx.moveTo(100, 195);
-      ctx.lineTo(canvas.width - 100, 195);
-      ctx.stroke();
-
-      // 4. Metadata Details (Right Side in RTL)
-      ctx.textAlign = 'right';
-      ctx.direction = 'rtl';
-      
-      const startX = canvas.width - 120;
-      let curY = 250;
-      const rowGap = 42;
-
-      const fields = [
-        { label: 'عنوان اثر:', value: artworkTitle },
-        { label: 'پدیدآورنده و خطاط:', value: artistName },
-        { label: 'سبک و شیوه نگارش:', value: scriptNames[globalScript] || 'خط فارسی' },
-        { label: 'ابعاد قطعه اصلی:', value: `${canvasWidth} × ${canvasHeight} پیکسل` },
-        { label: 'تکنیک و بستر:', value: techniqueDesc },
-        { label: 'تاریخ صدور و ثبت:', value: dateShamsi },
-        { label: 'شماره ثبت یکتا:', value: serialNumber },
-      ];
-
-      fields.forEach(f => {
-        ctx.fillStyle = '#78350f';
-        ctx.font = 'bold 16px Vazirmatn, sans-serif';
-        ctx.fillText(f.label, startX, curY);
-
-        ctx.fillStyle = '#1c1917';
-        ctx.font = '16px Vazirmatn, sans-serif';
-        ctx.fillText(f.value, startX - 170, curY);
-
-        ctx.strokeStyle = 'rgba(180, 83, 9, 0.15)';
-        ctx.beginPath();
-        ctx.moveTo(startX, curY + 12);
-        ctx.lineTo(startX - 500, curY + 12);
-        ctx.stroke();
-
-        curY += rowGap;
-      });
-
-      // 5. Artwork Preview Box (Left Side)
-      const boxX = 110;
-      const boxY = 240;
-      const boxW = 400;
-      const boxH = 260;
-
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeStyle = '#ca8a04';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-      ctx.fillStyle = '#18181b';
-      ctx.font = '32px IranNastaliq, Gulzar, serif';
-      ctx.textAlign = 'center';
-      const previewText = elements.find(e => e.type === 'text')?.text || artworkTitle;
-      ctx.fillText(previewText.slice(0, 35), boxX + boxW / 2, boxY + boxH / 2 + 10);
-
-      // Stamp in Certificate
-      ctx.save();
-      ctx.translate(boxX + boxW / 2, boxY + boxH + 80);
-      ctx.rotate(-0.1);
-      ctx.fillStyle = 'rgba(153, 27, 27, 0.85)';
-      ctx.strokeStyle = 'rgba(153, 27, 27, 0.85)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(0, 0, 45, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.font = 'bold 15px IranNastaliq, serif';
-      ctx.fillText('مهر اصالت و ثبت', 0, -5);
-      ctx.font = '11px Vazirmatn, sans-serif';
-      ctx.fillText(serialNumber, 0, 18);
-      ctx.restore();
-
-      // 6. Footer Declaration
-      ctx.fillStyle = '#44403c';
-      ctx.font = '13px Vazirmatn, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('بدین‌وسیله گواهی می‌شود این اثر با رعایت اصول و هندسه خوشنویسی اصیل ایرانی خلق و در دفتر رسمی آثار ثبت شده است.', canvas.width / 2, canvas.height - 100);
-
-      ctx.fillStyle = '#78350f';
-      ctx.font = 'bold 18px IranNastaliq, serif';
-      ctx.fillText(`امضا و ترقیم: ${artistName}`, canvas.width / 2, canvas.height - 65);
-
-      // Trigger Download
+      const canvas = await buildCertificateCanvas();
+      if (!canvas) return;
       canvas.toBlob((blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);

@@ -37,8 +37,8 @@ export const MagneticGuidesOverlay: React.FC<MagneticGuidesOverlayProps> = React
           y1="0"
           x2={canvasWidth / 2}
           y2={canvasHeight}
-          stroke="rgba(245, 158, 11, 0.25)"
-          strokeWidth="1"
+          stroke="rgba(217, 119, 6, 0.3)"
+          strokeWidth="0.8"
           strokeDasharray="4,4"
         />
 
@@ -50,19 +50,20 @@ export const MagneticGuidesOverlay: React.FC<MagneticGuidesOverlayProps> = React
               y1={mabdaY}
               x2={canvasWidth - 30}
               y2={mabdaY}
-              stroke="rgba(59, 130, 246, 0.6)"
-              strokeWidth="1.2"
-              strokeDasharray="6,3"
+              stroke="rgba(245, 158, 11, 0.45)"
+              strokeWidth="0.9"
+              strokeDasharray="5,4"
             />
             <text
               x={canvasWidth - 40}
               y={mabdaY - 6}
-              fill="rgba(59, 130, 246, 0.8)"
-              fontSize="10"
+              fill="rgba(245, 158, 11, 0.7)"
+              fontSize="9"
               fontFamily="sans-serif"
               textAnchor="end"
+              className="select-none font-vazir"
             >
-              خط مبدأ (الف‌ها و کاف‌ها)
+              خط مبدأ (الف‌ها و سرکش‌ها)
             </text>
           </g>
         )}
@@ -75,16 +76,17 @@ export const MagneticGuidesOverlay: React.FC<MagneticGuidesOverlayProps> = React
               y1={centerY}
               x2={canvasWidth - 30}
               y2={centerY}
-              stroke="rgba(234, 179, 8, 0.8)"
-              strokeWidth="1.5"
+              stroke="rgba(217, 119, 6, 0.85)"
+              strokeWidth="1.2"
             />
             <text
               x={canvasWidth - 40}
               y={centerY - 6}
-              fill="rgba(234, 179, 8, 0.9)"
+              fill="rgba(217, 119, 6, 0.9)"
               fontSize="10"
               fontFamily="sans-serif"
               textAnchor="end"
+              className="select-none font-vazir font-bold"
             >
               خط کرسی زمینه (اصلی)
             </text>
@@ -99,17 +101,18 @@ export const MagneticGuidesOverlay: React.FC<MagneticGuidesOverlayProps> = React
               y1={foroodY}
               x2={canvasWidth - 30}
               y2={foroodY}
-              stroke="rgba(239, 68, 68, 0.6)"
-              strokeWidth="1.2"
-              strokeDasharray="6,3"
+              stroke="rgba(180, 83, 9, 0.45)"
+              strokeWidth="0.9"
+              strokeDasharray="4,4"
             />
             <text
               x={canvasWidth - 40}
               y={foroodY - 6}
-              fill="rgba(239, 68, 68, 0.8)"
-              fontSize="10"
+              fill="rgba(180, 83, 9, 0.7)"
+              fontSize="9"
               fontFamily="sans-serif"
               textAnchor="end"
+              className="select-none font-vazir"
             >
               خط فرود (دایره‌های ن، ل، ی)
             </text>
@@ -127,17 +130,18 @@ export const MagneticGuidesOverlay: React.FC<MagneticGuidesOverlayProps> = React
                   y1={canvasHeight * ratio}
                   x2={canvasWidth - 60}
                   y2={canvasHeight * ratio}
-                  stroke="rgba(168, 85, 247, 0.7)"
-                  strokeWidth="1.2"
-                  strokeDasharray="8,4"
+                  stroke="rgba(217, 119, 6, 0.5)"
+                  strokeWidth="1"
+                  strokeDasharray="6,4"
                 />
                 <text
                   x={canvasWidth - 80}
                   y={canvasHeight * ratio - 6}
-                  fill="rgba(168, 85, 247, 0.85)"
-                  fontSize="10"
+                  fill="rgba(217, 119, 6, 0.75)"
+                  fontSize="9.5"
                   fontFamily="sans-serif"
                   textAnchor="end"
+                  className="select-none font-vazir"
                 >
                   کرسی مصرع {idx + 1} چلیپا ({settings.chlipaAngle || -12}°)
                 </text>

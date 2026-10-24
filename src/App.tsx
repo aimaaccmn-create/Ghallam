@@ -24,7 +24,8 @@ import {
   saveUserFontsToStorage,
   splitTextIntoWords,
   decomposePersianWord,
-  detachDotsFromElement
+  detachDotsFromElement,
+  exportToSvg
 } from './utils/calligraphyEngine';
 import { 
   FontLifecycleManager, 
@@ -248,11 +249,22 @@ export default function App() {
     return loadAllSavedUserFonts();
   });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // Initialize and register all custom fonts with persistent lifecycle manager
   useEffect(() => {
@@ -517,7 +529,12 @@ export default function App() {
 
       setProject(prev => ({
         ...prev,
-        elements: [...prev.elements.filter(e => e.id !== targetId), ...enhancedParts],
+        elements: [
+          ...prev.elements
+            .filter(e => e.id !== targetId)
+            .map(e => (e.parentAnchorId === targetId ? { ...e, parentAnchorId: enhancedParts[0].id } : e)),
+          ...enhancedParts,
+        ],
       }));
       setSelectedElementId(enhancedParts[0].id);
       showToast(`متن با موفقیت به ${enhancedParts.length} جزء مستقل تفکیک شد`);
@@ -675,39 +692,54 @@ export default function App() {
     showToast(`کلمات «${current.text}» و «${other.text}» با موفقیت متصل شدند`);
   }, [selectedElementId, project.elements, recordHistory]);
 
-  // Direct Vector Clipboard Copy (for Illustrator / Photoshop)
+  // Direct Vector Clipboard Copy (for Illustrator / Photoshop / CorelDRAW)
   const handleCopyVectorClipboard = useCallback(async () => {
-    const el = project.elements.find(e => e.id === selectedElementId);
-    const textToExport = el ? el.text || '' : 'کلک استودیو';
-    const svgCode = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" width="800" height="400">
-  <text x="400" y="200" text-anchor="middle" dominant-baseline="central" font-family="${el?.fontFamily || 'IranNastaliq'}" font-size="${el?.fontSize || 64}" fill="${el?.color || '#000000'}">
-    ${textToExport}
-  </text>
-</svg>`;
+    const targetElements = selectedElementId
+      ? project.elements.filter(e => e.id === selectedElementId || e.parentAnchorId === selectedElementId)
+      : project.elements;
+
+    const svgCode = exportToSvg({
+      ...project,
+      paperTexture: 'white',
+      backgroundColor: 'transparent',
+      frameBorder: 'none',
+      elements: targetElements,
+    });
 
     const success = await copySvgToClipboard(svgCode);
     if (success) {
-      showToast('وکتور با موفقیت در کلیپ‌بورد کپی شد (آماده Paste در فتوشاپ و ایلوستریتور)');
+      showToast('وکتور کامل لایه با موفقیت در کلیپ‌بورد کپی شد (آماده Paste در ایلوستریتور و فتوشاپ)');
     } else {
       showToast('کپی در کلیپ‌بورد با خطا مواجه شد');
     }
-  }, [selectedElementId, project.elements]);
+  }, [selectedElementId, project]);
 
-  // Duplicate Element
+  // Duplicate Element (including any anchored child dots/tashkeel)
   const handleDuplicateElement = useCallback((id: string) => {
     const elToDup = project.elements.find(el => el.id === id);
     if (!elToDup) return;
     recordHistory();
+    const newParentId = `${elToDup.type}_${Date.now()}`;
     const newEl: CanvasElement = {
       ...elToDup,
-      id: `${elToDup.type}_${Date.now()}`,
+      id: newParentId,
       x: elToDup.x + 25,
       y: elToDup.y + 25,
       zIndex: project.elements.length + 1,
     };
+    const anchoredChildren = project.elements
+      .filter(el => el.parentAnchorId === id)
+      .map((child, idx) => ({
+        ...child,
+        id: `${child.type}_dup_${Date.now()}_${idx}`,
+        x: child.x + 25,
+        y: child.y + 25,
+        parentAnchorId: newParentId,
+        zIndex: project.elements.length + 2 + idx,
+      }));
     setProject(prev => ({
       ...prev,
-      elements: [...prev.elements, newEl],
+      elements: [...prev.elements, newEl, ...anchoredChildren],
     }));
     setSelectedElementId(newEl.id);
   }, [project.elements, recordHistory]);
@@ -1033,27 +1065,26 @@ export default function App() {
     setSelectedElementId(null);
   };
 
-  // New Blank Project
+  // New Blank Project (Saves current state in Undo history so nothing is ever lost)
   const handleNewProject = () => {
-    if (window.confirm('آیا می‌خواهید یک صفحه جدید و خالی ایجاد کنید؟ (پروژه فعلی پاک خواهد شد)')) {
-      recordHistory();
-      setProject({
-        id: `project_${Date.now()}`,
-        name: 'قطعه خوشنویسی جدید',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        canvasWidth: 900,
-        canvasHeight: 650,
-        layoutMode: 'free',
-        paperTexture: 'parchment',
-        backgroundColor: '#faf5e8',
-        frameBorder: 'none',
-        globalScript: 'nastaliq',
-        penNibAngle: 63,
-        elements: [],
-      });
-      setSelectedElementId(null);
-    }
+    recordHistory();
+    setProject({
+      id: `project_${Date.now()}`,
+      name: 'قطعه خوشنویسی جدید',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      canvasWidth: 900,
+      canvasHeight: 650,
+      layoutMode: 'free',
+      paperTexture: 'parchment',
+      backgroundColor: '#faf5e8',
+      frameBorder: 'none',
+      globalScript: 'nastaliq',
+      penNibAngle: 63,
+      elements: [],
+    });
+    setSelectedElementId(null);
+    showToast('بوم جدید ایجاد شد (برای بازگشت به طرح قبلی دکمه واگرد Undo را بزنید)');
   };
 
   // Save Project as JSON (.kelk)

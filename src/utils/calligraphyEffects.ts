@@ -194,9 +194,8 @@ export function transformTextForDotArrangement(text: string, mode?: DotArrangeme
   if (!text || !mode || mode === 'standard') return text;
 
   if (mode === 'hidden') {
-    // Strip Arabic/Persian diacritics and convert dotted letters to dotless base forms
-    return text.replace(DOTTED_REGEX, (ch) => DOTLESS_MAP[ch] || ch)
-      .replace(HARAKAT_REGEX, ''); // strip harakat
+    // Strip Arabic/Persian diacritics and harakat while keeping the authentic word characters intact
+    return text.replace(HARAKAT_REGEX, '');
   }
 
   if (mode === 'connected_line') {

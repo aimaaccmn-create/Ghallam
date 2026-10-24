@@ -10,6 +10,7 @@ import {
 } from '../types/calligraphy';
 import { TAZHIB_COLLECTION, TAZHIB_MAP, DOT_PRESETS_MAP } from '../data/tazhibAssets';
 import { FontLifecycleManager, FontStorageEngine } from './fontManager';
+import { generateAdvancedCurvePath } from './calligraphyEffects';
 
 // Font mapping for each script with category metadata for rich browser
 export interface ScriptMetadata {
@@ -959,10 +960,11 @@ export function detachDotsFromElement(element: CanvasElement): {
     }
   });
 
+  // CRITICAL: Base word text must remain 100% intact with authentic Persian ligatures and characters!
+  // Never corrupt Persian letters with broken Arabic dotless codepoints (ٮ, ڡ, ں) or change ش to س!
   const updatedBase: CanvasElement = {
     ...element,
-    text: dotlessText,
-    dotArrangement: 'hidden',
+    text: originalText,
   };
 
   return { updatedBase, dotElements };
@@ -1437,12 +1439,21 @@ export function exportToSvg(project: KelkProject): string {
         `;
       }
 
-      // 3. Tazhib Ornaments & Borders (تذهیب و اسلیمی)
+      // 3. Tazhib Ornaments, Custom Imported SVG & Borders (تذهیب، وکتور اختصاصی و اسلیمی)
       if (el.type === 'tazhib') {
-        const tazhibItem = TAZHIB_MAP.get(el.tazhibName || '');
-        if (!tazhibItem) return '';
         const width = el.width || 80;
         const height = el.height || 80;
+        if (el.tazhibSvg) {
+          return `
+            <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})" opacity="${el.opacity}">
+              <g transform="translate(${-width / 2}, ${-height / 2})" style="color: ${el.color || '#d97706'}; fill: ${el.color || '#d97706'};">
+                ${el.tazhibSvg}
+              </g>
+            </g>
+          `;
+        }
+        const tazhibItem = TAZHIB_MAP.get(el.tazhibName || '');
+        if (!tazhibItem) return '';
         return `
           <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})" opacity="${el.opacity}">
             <g transform="translate(${-width / 2}, ${-height / 2})">
@@ -1482,23 +1493,42 @@ export function exportToSvg(project: KelkProject): string {
       }
 
       // 4. Calligraphy Text / Word / Letter / Tashkeel
-      const textToRender = el.kashidaLevel ? applyKashida(el.text || '', el.kashidaLevel) : (el.text || '');
+      const textToRender = (el.kashidaLevel || el.dotKashidaUnits)
+        ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
+        : (el.text || '');
       const filterAttr = el.shadowBlur ? `filter="drop-shadow(${el.shadowOffsetX || 2}px ${el.shadowOffsetY || 2}px ${el.shadowBlur || 4}px ${el.shadowColor || '#000000'})"` : '';
-      const fillVal = el.goldEffect ? 'url(#goldTextGrad)' : el.color;
+      const fillVal = (el.goldEffect || el.textureFill === 'gold_leaf' || el.textureFill === 'tazhib_arabesque')
+        ? 'url(#goldTextGrad)'
+        : el.textureFill === 'lapis_lazuli'
+        ? 'url(#lapisTextGrad)'
+        : el.textureFill === 'marble_veins'
+        ? 'url(#marbleTextGrad)'
+        : el.color;
+      const strokeAttr = el.outlineEnabled && el.outlineWidth
+        ? `stroke="${el.outlineColor || '#f59e0b'}" stroke-width="${el.outlineWidth}" paint-order="stroke fill"`
+        : '';
+      const spacingAttr = el.letterSpacing ? `letter-spacing="${el.letterSpacing}px"` : '';
+      const vScale = (el.verticalKashida || 1) * (el.dastehHeight || 1) * (el.dayerehDepth || 1);
+      const skewAngle = (el.stepKashidaAngle || 0) + (el.sarkeshAngle ? el.sarkeshAngle * 0.35 : 0);
+      const skewTransform = skewAngle ? `skewY(${skewAngle})` : '';
 
-      // Curved Text (انحنای متن)
+      // Curved Text (انحنای متن پیشرفته)
       if (el.curveType && el.curveType !== 'none') {
-        const curveDef = generateTextCurvePath(el.curveType, el.curvature || 50, el.width || 260, el.height || 80);
+        const w = el.width || Math.max(300, (textToRender.length || 5) * el.fontSize * 0.85);
+        const h = el.height || Math.max(220, el.fontSize * 3.5);
+        const curveDef = generateAdvancedCurvePath(el.curveType, el.curvature || 50, el.curveRadius || 180, w, h);
         return `
-          <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})" opacity="${el.opacity}">
-            <defs>
-              <path id="${curveDef.pathId}_${el.id}" d="${curveDef.pathD}" fill="none" />
-            </defs>
-            <text font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" direction="rtl" ${filterAttr}>
-              <textPath href="#${curveDef.pathId}_${el.id}" startOffset="50%" text-anchor="middle">
-                ${textToRender}
-              </textPath>
-            </text>
+          <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY * vScale}) ${skewTransform}" opacity="${el.opacity}">
+            <g transform="translate(${-w / 2}, ${-h / 2})">
+              <defs>
+                <path id="${curveDef.pathId}_${el.id}" d="${curveDef.pathD}" fill="none" />
+              </defs>
+              <text font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" ${strokeAttr} ${spacingAttr} direction="rtl" ${filterAttr}>
+                <textPath href="#${curveDef.pathId}_${el.id}" startOffset="50%" text-anchor="middle">
+                  ${textToRender}
+                </textPath>
+              </text>
+            </g>
           </g>
         `;
       }
@@ -1510,14 +1540,83 @@ export function exportToSvg(project: KelkProject): string {
         return `<tspan x="0" dy="${dy}">${line}</tspan>`;
       }).join('');
 
+      // Tughra crest SVG if enabled
+      const tughraSvg = el.symmetryMode === 'tughra_crest' ? `
+        <path d="M -50,${-el.fontSize * 0.45} C -40,${-el.fontSize * 1.15} -10,${-el.fontSize * 1.15} 0,${-el.fontSize * 0.65} C 10,${-el.fontSize * 1.15} 40,${-el.fontSize * 1.15} 50,${-el.fontSize * 0.45} M 0,${-el.fontSize * 0.65} L 0,${-el.fontSize * 1.25}" fill="none" stroke="${el.color || '#d97706'}" stroke-width="2" stroke-linecap="round" />
+      ` : '';
+
+      // Sub-Glyph Calligraphic Accents (Serkash & Tail Ending)
+      let subGlyphSvg = '';
+      if (el.serkashStyle && el.serkashStyle !== 'classic') {
+        const sColor = el.color || '#18181b';
+        const sx = (el.fontSize || 40) * 0.35;
+        const sy = -(el.fontSize || 40) * 0.72;
+        if (el.serkashStyle === 'extended') {
+          subGlyphSvg += `<path d="M ${sx},${sy + 12} L ${sx - 38},${sy} L ${sx - 30},${sy - 4}" fill="none" stroke="${sColor}" stroke-width="2.5" stroke-linecap="round" />`;
+        } else if (el.serkashStyle === 'detached') {
+          subGlyphSvg += `<path d="M ${sx},${sy + 10} Q ${sx - 22},${sy - 4} ${sx - 42},${sy + 4}" fill="none" stroke="${sColor}" stroke-width="2.5" stroke-linecap="round" />`;
+        } else if (el.serkashStyle === 'double') {
+          subGlyphSvg += `<path d="M ${sx},${sy + 12} L ${sx - 38},${sy + 2}" fill="none" stroke="${sColor}" stroke-width="2.2" stroke-linecap="round" /><path d="M ${sx - 4},${sy + 6} L ${sx - 34},${sy - 3}" fill="none" stroke="${sColor}" stroke-width="1.8" stroke-linecap="round" />`;
+        }
+      }
+      if (el.tailEnding && el.tailEnding !== 'standard') {
+        const tColor = el.color || '#18181b';
+        const tx = -(el.fontSize || 40) * 0.35;
+        const ty = (el.fontSize || 40) * 0.55;
+        if (el.tailEnding === 'shamshiri' || el.tailEnding === 'khanjari') {
+          subGlyphSvg += `<path d="M ${tx + 35},${ty - 6} Q ${tx + 10},${ty + 6} ${tx - 15},${ty + 2}" fill="none" stroke="${tColor}" stroke-width="${el.tailEnding === 'khanjari' ? '3' : '2.2'}" stroke-linecap="round" />`;
+        } else if (el.tailEnding === 'helali_curved') {
+          subGlyphSvg += `<path d="M ${tx + 35},${ty} Q ${tx + 5},${ty + 8} ${tx - 12},${ty - 8}" fill="none" stroke="${tColor}" stroke-width="2.2" stroke-linecap="round" />`;
+        } else if (el.tailEnding === 'feathered') {
+          subGlyphSvg += `<circle cx="${tx - 5}" cy="${ty}" r="3.5" fill="${tColor}" />`;
+        }
+      }
+
+      // Symmetry mirror copies in SVG export
+      let symmetryCopySvg = '';
+      if (el.symmetryMode === 'horizontal_mirror') {
+        symmetryCopySvg = `
+          <g transform="translate(${el.symmetryGap || 0}, 0) scale(-1, 1)" opacity="0.92">
+            <text x="0" y="${el.baselineShift || 0}" font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" ${strokeAttr} ${spacingAttr} direction="rtl" text-anchor="middle" dominant-baseline="central" ${filterAttr}>
+              ${textLinesSvg}
+            </text>
+          </g>
+        `;
+      } else if (el.symmetryMode === 'vertical_mirror') {
+        symmetryCopySvg = `
+          <g transform="translate(0, ${(el.fontSize * 1.1) + (el.symmetryGap || 0)}) scale(1, -1)" opacity="0.85">
+            <text x="0" y="${el.baselineShift || 0}" font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" ${strokeAttr} ${spacingAttr} direction="rtl" text-anchor="middle" dominant-baseline="central" ${filterAttr}>
+              ${textLinesSvg}
+            </text>
+          </g>
+        `;
+      } else if (el.symmetryMode === 'quad_mirror') {
+        const yOff = el.fontSize;
+        symmetryCopySvg = `
+          <g transform="scale(-1, 1)" opacity="0.85">
+            <text x="0" y="${el.baselineShift || 0}" font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" ${strokeAttr} ${spacingAttr} direction="rtl" text-anchor="middle" dominant-baseline="central">${textLinesSvg}</text>
+          </g>
+          <g transform="translate(0, ${yOff}) scale(1, -1)" opacity="0.85">
+            <text x="0" y="${el.baselineShift || 0}" font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" ${strokeAttr} ${spacingAttr} direction="rtl" text-anchor="middle" dominant-baseline="central">${textLinesSvg}</text>
+          </g>
+          <g transform="translate(0, ${yOff}) scale(-1, -1)" opacity="0.85">
+            <text x="0" y="${el.baselineShift || 0}" font-family="${el.fontFamily || 'IranNastaliq, serif'}" font-size="${el.fontSize}px" fill="${fillVal}" ${strokeAttr} ${spacingAttr} direction="rtl" text-anchor="middle" dominant-baseline="central">${textLinesSvg}</text>
+          </g>
+        `;
+      }
+
       return `
-        <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})" opacity="${el.opacity}">
+        <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY * vScale}) ${skewTransform}" opacity="${el.opacity}">
+          ${tughraSvg}
+          ${subGlyphSvg}
           <text 
             x="0" 
             y="${el.baselineShift || 0}" 
             font-family="${el.fontFamily || 'IranNastaliq, serif'}" 
             font-size="${el.fontSize}px" 
             fill="${fillVal}" 
+            ${strokeAttr}
+            ${spacingAttr}
             direction="rtl"
             text-anchor="middle"
             dominant-baseline="central"
@@ -1525,6 +1624,7 @@ export function exportToSvg(project: KelkProject): string {
           >
             ${textLinesSvg}
           </text>
+          ${symmetryCopySvg}
         </g>
       `;
     })
@@ -1538,6 +1638,17 @@ export function exportToSvg(project: KelkProject): string {
       <stop offset="35%" stop-color="#f59e0b" />
       <stop offset="70%" stop-color="#d97706" />
       <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    <linearGradient id="lapisTextGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="40%" stop-color="#172554" />
+      <stop offset="45%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#1e40af" />
+    </linearGradient>
+    <linearGradient id="marbleTextGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc" />
+      <stop offset="50%" stop-color="#94a3b8" />
+      <stop offset="100%" stop-color="#334155" />
     </linearGradient>
   </defs>
   <style>
@@ -1568,10 +1679,19 @@ export function exportToCamCncSvg(project: KelkProject): string {
         return `<path d="${path}" fill="none" stroke="#ff0000" stroke-width="0.1" />`;
       }
       if (el.type === 'tazhib') {
-        const item = TAZHIB_MAP.get(el.tazhibName || '');
-        if (!item) return '';
         const w = el.width || 80;
         const h = el.height || 80;
+        if (el.tazhibSvg) {
+          return `
+            <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
+              <g transform="translate(${-w / 2}, ${-h / 2})" fill="none" stroke="#ff0000" stroke-width="0.1">
+                ${el.tazhibSvg}
+              </g>
+            </g>
+          `;
+        }
+        const item = TAZHIB_MAP.get(el.tazhibName || '');
+        if (!item) return '';
         return `
           <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
             <g transform="translate(${-w / 2}, ${-h / 2})">
@@ -1582,9 +1702,24 @@ export function exportToCamCncSvg(project: KelkProject): string {
           </g>
         `;
       }
-      const textToRender = el.kashidaLevel ? applyKashida(el.text || '', el.kashidaLevel) : (el.text || '');
+      if (el.type === 'dot') {
+        const dotSize = Math.max(18, Math.round(el.fontSize * 0.9));
+        return `
+          <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
+            <g transform="translate(${-dotSize / 2}, ${-dotSize / 2})">
+              <svg width="${dotSize}" height="${dotSize}" viewBox="0 0 30 30">
+                <polygon points="15,2 28,15 15,28 2,15" fill="none" stroke="#ff0000" stroke-width="0.15" />
+              </svg>
+            </g>
+          </g>
+        `;
+      }
+      const textToRender = (el.kashidaLevel || el.dotKashidaUnits)
+        ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
+        : (el.text || '');
+      const vScale = (el.verticalKashida || 1) * (el.dastehHeight || 1) * (el.dayerehDepth || 1);
       return `
-        <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
+        <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY * vScale})">
           <text 
             x="0" 
             y="${el.baselineShift || 0}" 
@@ -1624,9 +1759,9 @@ export function exportColorSeparationSvg(
   // Filter elements matching the selected separation layer
   const filteredElements = elements.filter(el => {
     if (el.isVisible === false) return false;
-    const isGold = el.goldEffect || (el.color && (el.color.includes('d97706') || el.color.includes('f59e0b') || el.color.includes('amber')));
+    const isGold = el.goldEffect || el.textureFill === 'gold_leaf' || (el.color && (el.color.includes('d97706') || el.color.includes('f59e0b') || el.color.includes('amber')));
     const isRed = el.type === 'seal' || (el.color && (el.color.includes('991b1b') || el.color.includes('red') || el.color.includes('c2410c')));
-    const isBlue = el.color && (el.color.includes('1e3a8a') || el.color.includes('0284c7') || el.color.includes('blue'));
+    const isBlue = el.textureFill === 'lapis_lazuli' || (el.color && (el.color.includes('1e3a8a') || el.color.includes('0284c7') || el.color.includes('blue')));
 
     if (layerName === 'gold_foil') return isGold;
     if (layerName === 'red_seal') return isRed;
@@ -1659,10 +1794,19 @@ export function exportColorSeparationSvg(
       return `<path d="${path}" fill="#000000" />`;
     }
     if (el.type === 'tazhib') {
-      const item = TAZHIB_COLLECTION.find(t => t.id === el.tazhibName || t.name === el.tazhibName);
-      if (!item) return '';
       const w = el.width || 80;
       const h = el.height || 80;
+      if (el.tazhibSvg) {
+        return `
+          <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
+            <g transform="translate(${-w / 2}, ${-h / 2})" fill="#000000">
+              ${el.tazhibSvg}
+            </g>
+          </g>
+        `;
+      }
+      const item = TAZHIB_COLLECTION.find(t => t.id === el.tazhibName || t.name === el.tazhibName);
+      if (!item) return '';
       return `
         <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
           <g transform="translate(${-w / 2}, ${-h / 2})">
@@ -1673,7 +1817,9 @@ export function exportColorSeparationSvg(
         </g>
       `;
     }
-    const textToRender = el.kashidaLevel ? applyKashida(el.text || '', el.kashidaLevel) : (el.text || '');
+    const textToRender = (el.kashidaLevel || el.dotKashidaUnits)
+      ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
+      : (el.text || '');
     return `
       <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation}) scale(${el.scaleX}, ${el.scaleY})">
         <text 
@@ -1975,10 +2121,17 @@ export async function renderProjectToCanvas(
       // Yield to event loop for silky smooth UI
       await new Promise(r => setTimeout(r, 0));
     }
+    const verticalScale = (el.verticalKashida || 1) * (el.dastehHeight || 1);
+    const horizontalScale = el.dayerehDepth || 1;
+    const totalRot = (el.rotation || 0) + (el.sarkeshAngle ? el.sarkeshAngle * 0.25 : 0);
+
     ctx.save();
     ctx.translate(el.x, el.y);
-    ctx.rotate(((el.rotation || 0) * Math.PI) / 180);
-    ctx.scale(el.scaleX ?? 1, el.scaleY ?? 1);
+    ctx.rotate((totalRot * Math.PI) / 180);
+    ctx.scale((el.scaleX ?? 1) * horizontalScale, (el.scaleY ?? 1) * verticalScale);
+    if (el.stepKashidaAngle) {
+      ctx.transform(1, Math.tan((el.stepKashidaAngle * Math.PI) / 180), 0, 1, 0, 0);
+    }
     ctx.globalAlpha = el.opacity ?? 1;
 
     // 3.1 Freehand Reed Pen Stroke
@@ -2105,14 +2258,13 @@ export async function renderProjectToCanvas(
       ctx.font = '10px Vazirmatn, sans-serif';
       ctx.fillText(dateStr, 0, h * 0.32);
     }
-    // 3.3 Tazhib Ornament
+    // 3.3 Tazhib Ornament or Custom Imported Vector SVG
     else if (el.type === 'tazhib') {
+      const w = el.width || 80;
+      const h = el.height || 80;
       const item = TAZHIB_COLLECTION.find(t => t.id === el.tazhibName || t.name === el.tazhibName);
       if (item) {
-        const w = el.width || 80;
-        const h = el.height || 80;
         const path2d = new Path2D(item.path);
-
         const vbParts = item.viewBox.split(' ').map(Number);
         const vbW = vbParts[2] || 100;
         const vbH = vbParts[3] || 100;
@@ -2121,27 +2273,83 @@ export async function renderProjectToCanvas(
         ctx.scale(w / vbW, h / vbH);
         ctx.fillStyle = el.color || item.defaultColor || '#d97706';
         ctx.fill(path2d);
+      } else if (el.tazhibSvg) {
+        // Extract path d attributes from custom imported SVG string if present
+        const pathMatches = [...el.tazhibSvg.matchAll(/<path[^>]*d=["']([^"']+)["'][^>]*>/gi)];
+        const vbMatch = el.tazhibSvg.match(/viewBox=["']([^"']+)["']/i);
+        const vbParts = vbMatch ? vbMatch[1].trim().split(/[\s,]+/).map(Number) : [0, 0, 100, 100];
+        const vbW = vbParts[2] || 100;
+        const vbH = vbParts[3] || 100;
+
+        ctx.translate(-w / 2, -h / 2);
+        ctx.scale(w / vbW, h / vbH);
+        ctx.fillStyle = el.color || '#d97706';
+        if (pathMatches.length > 0) {
+          pathMatches.forEach(m => {
+            try {
+              const p = new Path2D(m[1]);
+              ctx.fill(p);
+            } catch {}
+          });
+        }
       }
     }
-    // 3.4 Calligraphy Text / Words / Tashkeel / Dots
+    // 3.35 Detached / Independent Calligraphic Dot (Nuqta)
+    else if (el.type === 'dot') {
+      const dotSize = Math.max(18, Math.round((el.fontSize || 24) * 0.9));
+      const r = dotSize * 0.42;
+      if (el.goldEffect || el.textureFill === 'gold_leaf') {
+        const grad = ctx.createLinearGradient(-r, -r, r, r);
+        grad.addColorStop(0, '#fef08a');
+        grad.addColorStop(0.5, '#eab308');
+        grad.addColorStop(1, '#b45309');
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = el.color || '#18181b';
+      }
+
+      const drawDiamond = (cx: number, cy: number, rad: number) => {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rad);
+        ctx.lineTo(cx + rad, cy);
+        ctx.lineTo(cx, cy + rad);
+        ctx.lineTo(cx - rad, cy);
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      const preset = el.dotPreset || '';
+      if (preset.includes('circle')) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (preset.includes('two_horizontal')) {
+        drawDiamond(-r * 0.85, 0, r * 0.65);
+        drawDiamond(r * 0.85, 0, r * 0.65);
+      } else if (preset.includes('two_vertical')) {
+        drawDiamond(0, -r * 0.85, r * 0.65);
+        drawDiamond(0, r * 0.85, r * 0.65);
+      } else if (preset.includes('three_up')) {
+        drawDiamond(0, -r * 0.85, r * 0.6);
+        drawDiamond(-r * 0.8, r * 0.55, r * 0.6);
+        drawDiamond(r * 0.8, r * 0.55, r * 0.6);
+      } else if (preset.includes('three_down')) {
+        drawDiamond(-r * 0.8, -r * 0.55, r * 0.6);
+        drawDiamond(r * 0.8, -r * 0.55, r * 0.6);
+        drawDiamond(0, r * 0.85, r * 0.6);
+      } else {
+        drawDiamond(0, 0, r);
+      }
+    }
+    // 3.4 Calligraphy Text / Words / Tashkeel
     else {
       let rawText = el.kashidaLevel || el.dotKashidaUnits
         ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
         : (el.text || '');
 
-      // Dot arrangement
+      // Dot arrangement - strip harakat if hidden, but preserve authentic Persian characters
       if (el.dotArrangement === 'hidden') {
-        const dotlessMap: Record<string, string> = {
-          'ب': 'ٮ', 'پ': 'ٮ', 'ت': 'ٮ', 'ث': 'ٮ',
-          'ج': 'ح', 'چ': 'ح', 'خ': 'ح',
-          'ذ': 'د', 'ز': 'ر', 'ژ': 'ر',
-          'ش': 'س', 'ض': 'ص', 'ظ': 'ط',
-          'غ': 'ع', 'ف': 'ڡ', 'ق': 'ٯ',
-          'ک': 'ک', 'گ': 'ک', 'ن': 'ں',
-          'ی': 'ى', 'ئ': 'ى', 'ي': 'ى',
-        };
-        rawText = rawText.replace(/[بتپثجچخذرزژشضظغفقنگيیئة]/g, (ch) => dotlessMap[ch] || ch)
-          .replace(/[\u064B-\u065F\u0670]/g, '');
+        rawText = rawText.replace(/[\u064B-\u065F\u0670]/g, '');
       }
       const textContent = rawText;
 
@@ -2192,6 +2400,18 @@ export async function renderProjectToCanvas(
         ctx.fillStyle = el.color || '#18181b';
       }
 
+      // Tughra Imperial Crest if enabled
+      if (el.symmetryMode === 'tughra_crest') {
+        ctx.save();
+        ctx.translate(-60, -(el.fontSize || 40) * 0.85 - 35);
+        ctx.strokeStyle = el.color || '#d97706';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        const crestPath = new Path2D('M 10,48 C 20,5 50,5 60,35 C 70,5 100,5 110,48 M 60,35 L 60,2 M 35,28 C 45,15 75,15 85,28');
+        ctx.stroke(crestPath);
+        ctx.restore();
+      }
+
       const fontFam = el.fontFamily || 'IranNastaliq, "Noto Nastaliq Urdu", Gulzar, serif';
       const fontSize = el.fontSize || 40;
       ctx.font = `${fontSize}px ${fontFam}`;
@@ -2199,38 +2419,154 @@ export async function renderProjectToCanvas(
       ctx.textBaseline = 'middle';
       ctx.direction = 'rtl';
 
-      const lines = textContent.split('\n');
-      const lineHeight = fontSize * 1.22;
-      const totalH = lines.length * lineHeight;
-      const startY = (el.baselineShift || 0) - (totalH / 2) + (lineHeight / 2);
+      // Sub-Glyph Calligraphic Accents on 2D Canvas
+      if (el.serkashStyle && el.serkashStyle !== 'classic') {
+        ctx.save();
+        ctx.strokeStyle = el.color || '#18181b';
+        ctx.lineCap = 'round';
+        const sx = fontSize * 0.35;
+        const sy = -fontSize * 0.72;
+        if (el.serkashStyle === 'extended') {
+          ctx.lineWidth = 2.5;
+          ctx.stroke(new Path2D(`M ${sx},${sy + 12} L ${sx - 38},${sy} L ${sx - 30},${sy - 4}`));
+        } else if (el.serkashStyle === 'detached') {
+          ctx.lineWidth = 2.5;
+          ctx.stroke(new Path2D(`M ${sx},${sy + 10} Q ${sx - 22},${sy - 4} ${sx - 42},${sy + 4}`));
+        } else if (el.serkashStyle === 'double') {
+          ctx.lineWidth = 2.2;
+          ctx.stroke(new Path2D(`M ${sx},${sy + 12} L ${sx - 38},${sy + 2}`));
+          ctx.lineWidth = 1.8;
+          ctx.stroke(new Path2D(`M ${sx - 4},${sy + 6} L ${sx - 34},${sy - 3}`));
+        }
+        ctx.restore();
+      }
 
-      const renderLines = () => {
-        lines.forEach((line, idx) => {
+      if (el.tailEnding && el.tailEnding !== 'standard') {
+        ctx.save();
+        ctx.strokeStyle = el.color || '#18181b';
+        ctx.fillStyle = el.color || '#18181b';
+        ctx.lineCap = 'round';
+        const tx = -fontSize * 0.35;
+        const ty = fontSize * 0.55;
+        if (el.tailEnding === 'shamshiri' || el.tailEnding === 'khanjari') {
+          ctx.lineWidth = el.tailEnding === 'khanjari' ? 3 : 2.2;
+          ctx.stroke(new Path2D(`M ${tx + 35},${ty - 6} Q ${tx + 10},${ty + 6} ${tx - 15},${ty + 2}`));
+        } else if (el.tailEnding === 'helali_curved') {
+          ctx.lineWidth = 2.2;
+          ctx.stroke(new Path2D(`M ${tx + 35},${ty} Q ${tx + 5},${ty + 8} ${tx - 12},${ty - 8}`));
+        } else if (el.tailEnding === 'feathered') {
+          ctx.beginPath();
+          ctx.arc(tx - 5, ty, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Curved Text Rendering on 2D Canvas (preserving Persian cursive ligatures)
+      if (el.curveType && el.curveType !== 'none') {
+        const clusters = decomposePersianIntoLigatures(textContent);
+        const totalClusters = clusters.length || 1;
+        const spanW = el.width || Math.max(260, textContent.length * fontSize * 0.65);
+        const curv = el.curvature ?? 50;
+        const rad = el.curveRadius || Math.max(90, spanW * 0.38);
+
+        clusters.forEach((cluster, cIdx) => {
+          // RTL progression: t goes from 0 (rightmost) to 1 (leftmost)
+          const t = totalClusters === 1 ? 0.5 : cIdx / (totalClusters - 1);
+          let cx = (0.5 - t) * spanW * 0.82;
+          let cy = 0;
+          let cAngle = 0;
+
+          if (el.curveType === 'arc_up') {
+            const norm = (t - 0.5) * 2; // -1 to 1
+            cy = (norm * norm - 0.5) * (curv * 1.15);
+            cAngle = -norm * (curv * 0.35);
+          } else if (el.curveType === 'arc_down') {
+            const norm = (t - 0.5) * 2;
+            cy = -(norm * norm - 0.5) * (curv * 1.15);
+            cAngle = norm * (curv * 0.35);
+          } else if (el.curveType === 'wave') {
+            cy = Math.sin(t * Math.PI * 2) * (curv * 0.65);
+            cAngle = -Math.cos(t * Math.PI * 2) * (curv * 0.25);
+          } else if (el.curveType === 'circle') {
+            const theta = -Math.PI * 0.25 - t * Math.PI * 1.5;
+            cx = Math.cos(theta) * rad * 0.65;
+            cy = Math.sin(theta) * rad * 0.65;
+            cAngle = ((theta - Math.PI / 2) * 180) / Math.PI;
+          } else if (el.curveType === 'arch') {
+            const norm = (t - 0.5) * 2;
+            cy = (Math.abs(norm) - 0.5) * (curv * 1.25);
+            cAngle = norm < 0 ? 18 : -18;
+          } else if (el.curveType === 'spiral') {
+            const theta = t * Math.PI * 2.2;
+            const rSpiral = rad * (0.75 - t * 0.4);
+            cx = Math.cos(theta) * rSpiral * 0.65;
+            cy = -Math.sin(theta) * rSpiral * 0.65;
+            cAngle = -theta * (180 / Math.PI) * 0.35;
+          }
+
+          ctx.save();
+          ctx.translate(cx, cy + (el.baselineShift || 0));
+          ctx.rotate((cAngle * Math.PI) / 180);
           if (el.outlineEnabled && el.outlineWidth) {
             ctx.lineWidth = el.outlineWidth;
             ctx.strokeStyle = el.outlineColor || '#f59e0b';
-            ctx.strokeText(line, 0, startY + (idx * lineHeight));
+            ctx.strokeText(cluster, 0, 0);
           }
-          ctx.fillText(line, 0, startY + (idx * lineHeight));
+          ctx.fillText(cluster, 0, 0);
+          ctx.restore();
         });
-      };
+      } else {
+        const lines = textContent.split('\n');
+        const lineHeight = fontSize * 1.22;
+        const totalH = lines.length * lineHeight;
+        const startY = (el.baselineShift || 0) - (totalH / 2) + (lineHeight / 2);
 
-      // Draw primary text
-      renderLines();
+        const renderLines = () => {
+          lines.forEach((line, idx) => {
+            if (el.outlineEnabled && el.outlineWidth) {
+              ctx.lineWidth = el.outlineWidth;
+              ctx.strokeStyle = el.outlineColor || '#f59e0b';
+              ctx.strokeText(line, 0, startY + (idx * lineHeight));
+            }
+            ctx.fillText(line, 0, startY + (idx * lineHeight));
+          });
+        };
 
-      // Draw symmetry twins if enabled
-      if (el.symmetryMode === 'horizontal_mirror') {
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.translate(- (el.symmetryGap || 40), 0);
+        // Draw primary text
         renderLines();
-        ctx.restore();
-      } else if (el.symmetryMode === 'vertical_mirror') {
-        ctx.save();
-        ctx.scale(1, -1);
-        ctx.translate(0, - (fontSize * 1.1 + (el.symmetryGap || 40)));
-        renderLines();
-        ctx.restore();
+
+        // Draw symmetry twins if enabled
+        if (el.symmetryMode === 'horizontal_mirror') {
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.translate(- (el.symmetryGap || 0), 0);
+          renderLines();
+          ctx.restore();
+        } else if (el.symmetryMode === 'vertical_mirror') {
+          ctx.save();
+          ctx.scale(1, -1);
+          ctx.translate(0, - (fontSize * 1.1 + (el.symmetryGap || 0)));
+          renderLines();
+          ctx.restore();
+        } else if (el.symmetryMode === 'quad_mirror') {
+          ctx.save();
+          ctx.scale(-1, 1);
+          renderLines();
+          ctx.restore();
+
+          ctx.save();
+          ctx.scale(1, -1);
+          ctx.translate(0, -fontSize);
+          renderLines();
+          ctx.restore();
+
+          ctx.save();
+          ctx.scale(-1, -1);
+          ctx.translate(0, -fontSize);
+          renderLines();
+          ctx.restore();
+        }
       }
     }
 

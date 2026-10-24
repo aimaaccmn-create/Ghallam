@@ -52,12 +52,12 @@ export const HistorySnapshotsModal: React.FC<HistorySnapshotsModalProps> = React
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 dir-rtl font-vazir select-none">
-      <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 dir-rtl font-vazir select-none animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-neutral-900 border border-amber-500/40 rounded-3xl overflow-hidden shadow-2xl shadow-amber-500/10 flex flex-col max-h-[88vh] text-neutral-100">
         {/* Header */}
-        <div className="p-4 px-6 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/40">
+        <div className="p-5 px-6 border-b border-neutral-800/90 flex items-center justify-between bg-neutral-950/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <div className="p-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-sm">
               <History className="w-5 h-5" />
             </div>
             <div>
@@ -71,7 +71,8 @@ export const HistorySnapshotsModal: React.FC<HistorySnapshotsModalProps> = React
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-all"
+            className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
+            title="بستن"
           >
             <X className="w-5 h-5" />
           </button>

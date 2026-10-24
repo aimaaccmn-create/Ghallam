@@ -34,12 +34,14 @@ export const ProjectBundleModal: React.FC<ProjectBundleModalProps> = ({
   const [importing, setImporting] = useState(false);
   const [includeFonts, setIncludeFonts] = useState(true);
   const [includeThumbnail, setIncludeThumbnail] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   // Export Bundle as JSON Package
   const handleExportBundle = async () => {
     try {
+      setErrorMsg(null);
       setExporting(true);
       let thumbnailDataUrl = '';
 
@@ -86,6 +88,7 @@ export const ProjectBundleModal: React.FC<ProjectBundleModalProps> = ({
       onClose();
     } catch (err) {
       console.error('Bundle export failed:', err);
+      setErrorMsg('خطا در ساخت بسته خروجی پروژه');
       setExporting(false);
     }
   };
@@ -95,6 +98,7 @@ export const ProjectBundleModal: React.FC<ProjectBundleModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setErrorMsg(null);
     setImporting(true);
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -102,9 +106,15 @@ export const ProjectBundleModal: React.FC<ProjectBundleModalProps> = ({
         const raw = event.target?.result as string;
         const parsed = JSON.parse(raw);
 
-        if (parsed.project && Array.isArray(parsed.project.elements)) {
+        const targetProject = parsed.project && Array.isArray(parsed.project.elements)
+          ? parsed.project
+          : Array.isArray(parsed.elements)
+          ? parsed
+          : null;
+
+        if (targetProject) {
           const importedProject: KelkProject = {
-            ...parsed.project,
+            ...targetProject,
             id: `project_imported_${Date.now()}`,
             updatedAt: new Date().toISOString(),
           };
@@ -117,16 +127,17 @@ export const ProjectBundleModal: React.FC<ProjectBundleModalProps> = ({
           setImporting(false);
           onClose();
         } else {
-          alert('فرمت فایل بسته نامعتبر است');
+          setErrorMsg('فرمت فایل بسته پروژه نامعتبر است');
           setImporting(false);
         }
       } catch (err) {
         console.error('Failed to parse bundle:', err);
-        alert('خطا در بازخوانی فایل بسته پروژه');
+        setErrorMsg('خطا در بازخوانی فایل بسته پروژه');
         setImporting(false);
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
@@ -153,6 +164,14 @@ export const ProjectBundleModal: React.FC<ProjectBundleModalProps> = ({
 
         {/* Body */}
         <div className="p-5 space-y-4">
+          {errorMsg && (
+            <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs font-semibold flex items-center justify-between">
+              <span>{errorMsg}</span>
+              <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           {/* Options */}
           <div className="bg-neutral-950/40 p-4 rounded-xl border border-neutral-800 space-y-3">
             <h4 className="text-xs font-bold text-neutral-200">محتویات بسته خروجی:</h4>

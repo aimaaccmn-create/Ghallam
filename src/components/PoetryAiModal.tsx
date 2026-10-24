@@ -92,7 +92,7 @@ export const PoetryAiModal: React.FC<PoetryAiModalProps> = React.memo(({
       const res = await fetch('/api/calligraphy/auto-tashkeel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: tashkeelInput, scriptType: SCRIPT_FONT_MAP[currentScript].name }),
+        body: JSON.stringify({ text: tashkeelInput, scriptType: SCRIPT_FONT_MAP[currentScript]?.name || 'نستعلیق' }),
       });
       const data = await res.json();
       if (data.tashkeelText) {
@@ -116,7 +116,7 @@ export const PoetryAiModal: React.FC<PoetryAiModalProps> = React.memo(({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           text: textToAnalyze, 
-          script: SCRIPT_FONT_MAP[currentScript].name,
+          script: SCRIPT_FONT_MAP[currentScript]?.name || 'نستعلیق',
           layout: 'چلیپای سنتی'
         }),
       });

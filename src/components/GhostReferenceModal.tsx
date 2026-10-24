@@ -16,7 +16,8 @@ interface GhostReferenceModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: GhostReferenceSettings;
-  onChangeSettings: (settings: GhostReferenceSettings) => void;
+  onChangeSettings?: (settings: GhostReferenceSettings) => void;
+  onUpdateSettings?: (settings: Partial<GhostReferenceSettings>) => void;
 }
 
 export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
@@ -24,11 +25,17 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
   onClose,
   settings,
   onChangeSettings,
+  onUpdateSettings,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   if (!isOpen) return null;
+
+  const applySettings = (next: GhostReferenceSettings) => {
+    if (onChangeSettings) onChangeSettings(next);
+    if (onUpdateSettings) onUpdateSettings(next);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -36,7 +43,7 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
       const reader = new FileReader();
       reader.onload = (event) => {
         const dataUrl = event.target?.result as string;
-        onChangeSettings({
+        applySettings({
           ...settings,
           url: dataUrl,
           isVisible: true,
@@ -44,10 +51,11 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
       };
       reader.readAsDataURL(file);
     }
+    e.target.value = '';
   };
 
   const handleClear = () => {
-    onChangeSettings({
+    applySettings({
       ...settings,
       url: null,
       isVisible: false,
@@ -90,7 +98,7 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
                 if (file) {
                   const reader = new FileReader();
                   reader.onload = (event) => {
-                    onChangeSettings({
+                    applySettings({
                       ...settings,
                       url: event.target?.result as string,
                       isVisible: true,
@@ -133,14 +141,14 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
                 />
                 <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-neutral-900/80 backdrop-blur px-2 py-1 rounded-lg border border-neutral-700 text-xs">
                   <button
-                    onClick={() => onChangeSettings({ ...settings, isVisible: !settings.isVisible })}
+                    onClick={() => applySettings({ ...settings, isVisible: !settings.isVisible })}
                     className={`p-1 rounded ${settings.isVisible ? 'text-amber-400' : 'text-neutral-500'}`}
                     title="نمایش/مخفی"
                   >
                     {settings.isVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                   </button>
                   <button
-                    onClick={() => onChangeSettings({ ...settings, isLocked: !settings.isLocked })}
+                    onClick={() => applySettings({ ...settings, isLocked: !settings.isLocked })}
                     className={`p-1 rounded ${settings.isLocked ? 'text-amber-400' : 'text-neutral-400'}`}
                     title="قفل/بازکردن موقعیت"
                   >
@@ -170,7 +178,7 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
                     max="0.9"
                     step="0.05"
                     value={settings.opacity}
-                    onChange={(e) => onChangeSettings({ ...settings, opacity: parseFloat(e.target.value) })}
+                    onChange={(e) => applySettings({ ...settings, opacity: parseFloat(e.target.value) })}
                     className="w-full accent-amber-500 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
                   />
                 </div>
@@ -187,7 +195,7 @@ export const GhostReferenceModal: React.FC<GhostReferenceModalProps> = ({
                     max="2.5"
                     step="0.05"
                     value={settings.scale}
-                    onChange={(e) => onChangeSettings({ ...settings, scale: parseFloat(e.target.value) })}
+                    onChange={(e) => applySettings({ ...settings, scale: parseFloat(e.target.value) })}
                     className="w-full accent-amber-500 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
                   />
                 </div>

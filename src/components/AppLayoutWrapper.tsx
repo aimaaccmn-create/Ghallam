@@ -66,8 +66,8 @@ export const AppLayoutWrapper: React.FC<AppLayoutWrapperProps> = React.memo(({
 
           {/* Floating Element Quick Action Controls */}
           {floatingControls && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center z-30">
-              <div className="pointer-events-auto">
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 sm:bottom-5 flex justify-center z-30 px-3">
+              <div className="pointer-events-auto max-w-full">
                 {floatingControls}
               </div>
             </div>

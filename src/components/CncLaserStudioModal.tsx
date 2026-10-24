@@ -10,6 +10,8 @@ import {
   Gem
 } from 'lucide-react';
 import { CanvasElement } from '../types/calligraphy';
+import { applyKashida, generateReedPenRibbonPath } from '../utils/calligraphyEngine';
+import { TAZHIB_MAP } from '../data/tazhibAssets';
 import { SoundEngine } from '../utils/soundEffects';
 
 interface CncLaserStudioModalProps {
@@ -40,45 +42,125 @@ export const CncLaserStudioModal: React.FC<CncLaserStudioModalProps> = React.mem
 
   if (!isOpen) return null;
 
-  const textElements = elements.filter(e => e.type === 'text' || !e.type);
+  const visibleElements = elements.filter(e => e.isVisible !== false);
+  const textElements = visibleElements.filter(e => e.type === 'text' || e.type === 'word' || e.type === 'letter' || !e.type);
   const primaryText = textElements.map(e => e.text).filter(Boolean).join(' ') || 'علی';
 
-  const handleExportLaserSvg = () => {
-    SoundEngine.playChime();
-
-    // Generate production-ready CNC SVG with weld & offset paths
-    const strokeWidth = hairlineRedCut ? '0.25' : '1.5';
+  const generateCncSvgString = () => {
+    const strokeWidth = hairlineRedCut ? '0.25' : String(Math.max(0.5, kerfOffset * 0.5));
     const strokeColor = hairlineRedCut ? '#ff0000' : '#18181b';
-    const fillStyle = cncMode === 'gold_jewelry' ? 'none' : (cncMode === 'laser_cut' ? 'none' : '#ca8a04');
+    const fillStyle = cncMode === 'gold_jewelry' || cncMode === 'laser_cut' ? 'none' : '#ca8a04';
+
+    const minY = visibleElements.length > 0
+      ? Math.min(...visibleElements.map(e => e.y - (e.fontSize || 48) * 0.6))
+      : canvasHeight / 2 - 80;
+    const bailX = canvasWidth * (bailPosition / 100);
+    const bailY = Math.max(24, minY - 12);
 
     const bailSvg = addJewelryBail ? `
       <!-- Jewelry Hanging Bail Ring -->
-      <circle cx="${canvasWidth * (bailPosition / 100)}" cy="${canvasHeight / 2 - 80}" r="${bailRadius + 4}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
-      <circle cx="${canvasWidth * (bailPosition / 100)}" cy="${canvasHeight / 2 - 80}" r="${bailRadius}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+      <g id="JEWELRY_BAIL">
+        <circle cx="${bailX}" cy="${bailY}" r="${bailRadius + 4}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+        <circle cx="${bailX}" cy="${bailY}" r="${bailRadius}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+      </g>
     ` : '';
 
-    const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasWidth} ${canvasHeight}" width="${canvasWidth}" height="${canvasHeight}">
+    // Structural bridge tabs for detached dots so they stay connected to the main body during laser/gold cutting
+    const bridgesSvg = bridgeFloatingDots
+      ? visibleElements
+          .filter(el => el.type === 'dot')
+          .map(dotEl => {
+            const parent = visibleElements.find(p => p.id === dotEl.parentAnchorId) || textElements[0];
+            if (!parent) return '';
+            const targetY = dotEl.y < parent.y ? dotEl.y + 14 : dotEl.y - 14;
+            return `<line x1="${dotEl.x}" y1="${dotEl.y}" x2="${dotEl.x}" y2="${targetY}" stroke="${strokeColor}" stroke-width="${Math.max(1.8, kerfOffset * 0.6)}" stroke-linecap="round" />`;
+          })
+          .join('\n    ')
+      : '';
+
+    const elementsSvg = visibleElements.length > 0
+      ? visibleElements.map(el => {
+          if (el.type === 'stroke' && el.strokeData) {
+            const path = generateReedPenRibbonPath(el.strokeData.points, el.strokeData.nibAngle, el.strokeData.nibWidth);
+            return `<path d="${path}" fill="${fillStyle}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
+          }
+          if (el.type === 'dot') {
+            const dotSize = Math.max(18, Math.round((el.fontSize || 24) * 0.9));
+            return `
+              <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation || 0}) scale(${el.scaleX || 1}, ${el.scaleY || 1})">
+                <g transform="translate(${-dotSize / 2}, ${-dotSize / 2})">
+                  <svg width="${dotSize}" height="${dotSize}" viewBox="0 0 30 30">
+                    <polygon points="15,2 28,15 15,28 2,15" fill="${fillStyle}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+                  </svg>
+                </g>
+              </g>
+            `;
+          }
+          if (el.type === 'tazhib') {
+            const w = el.width || 80;
+            const h = el.height || 80;
+            const item = TAZHIB_MAP.get(el.tazhibName || '');
+            if (item) {
+              return `
+                <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation || 0}) scale(${el.scaleX || 1}, ${el.scaleY || 1})">
+                  <g transform="translate(${-w / 2}, ${-h / 2})">
+                    <svg width="${w}" height="${h}" viewBox="${item.viewBox}">
+                      <path d="${item.path}" fill="${fillStyle}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+                    </svg>
+                  </g>
+                </g>
+              `;
+            }
+            if (el.tazhibSvg) {
+              return `
+                <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation || 0}) scale(${el.scaleX || 1}, ${el.scaleY || 1})">
+                  <g transform="translate(${-w / 2}, ${-h / 2})" fill="${fillStyle}" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                    ${el.tazhibSvg}
+                  </g>
+                </g>
+              `;
+            }
+            return '';
+          }
+          const textToRender = (el.kashidaLevel || el.dotKashidaUnits)
+            ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
+            : (el.text || '');
+          const vScale = (el.verticalKashida || 1) * (el.dastehHeight || 1);
+          const hScale = el.dayerehDepth || 1;
+          return `
+            <g transform="translate(${el.x}, ${el.y}) rotate(${el.rotation || 0}) scale(${(el.scaleX || 1) * hScale}, ${(el.scaleY || 1) * vScale})">
+              <text
+                x="0"
+                y="${el.baselineShift || 0}"
+                text-anchor="middle"
+                dominant-baseline="central"
+                direction="rtl"
+                font-family="${el.fontFamily || 'IranNastaliq, serif'}"
+                font-size="${el.fontSize || 64}px"
+                stroke="${strokeColor}"
+                stroke-width="${strokeWidth}"
+                fill="${fillStyle}"
+                style="paint-order: stroke fill;"
+              >${textToRender}</text>
+            </g>
+          `;
+        }).join('\n    ')
+      : `<text x="${canvasWidth / 2}" y="${canvasHeight / 2}" text-anchor="middle" dominant-baseline="central" font-family="IranNastaliq, serif" font-size="96" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="${fillStyle}" style="paint-order: stroke fill;">${primaryText}</text>`;
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasWidth} ${canvasHeight}" width="${canvasWidth}" height="${canvasHeight}" dir="rtl">
   <!-- Generated by Kelk CNC & Laser Studio (Ready for CorelDRAW, AutoCAD, LightBurn, ArtCAM) -->
   <g id="CNC_CUT_LAYER" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="${fillStyle}">
     ${bailSvg}
-    <text 
-      x="${canvasWidth / 2}" 
-      y="${canvasHeight / 2}" 
-      text-anchor="middle" 
-      dominant-baseline="central" 
-      font-family="IranNastaliq, 'Aref Ruqaa', serif" 
-      font-size="96" 
-      stroke="${strokeColor}" 
-      stroke-width="${strokeWidth}" 
-      fill="${fillStyle}"
-      style="paint-order: stroke fill;"
-    >
-      ${primaryText}
-    </text>
+    ${bridgesSvg}
+    ${elementsSvg}
   </g>
 </svg>`;
+  };
 
+  const handleExportLaserSvg = () => {
+    SoundEngine.playChime();
+    const svgContent = generateCncSvgString();
     const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -92,7 +174,7 @@ export const CncLaserStudioModal: React.FC<CncLaserStudioModalProps> = React.mem
 
   const handleCopySvgCode = () => {
     SoundEngine.playSnap();
-    const snippet = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasWidth} ${canvasHeight}"><text x="${canvasWidth/2}" y="${canvasHeight/2}" text-anchor="middle" font-family="IranNastaliq" font-size="96" stroke="#ff0000" stroke-width="0.25" fill="none">${primaryText}</text></svg>`;
+    const snippet = generateCncSvgString();
     navigator.clipboard.writeText(snippet);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 3000);

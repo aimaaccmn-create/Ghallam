@@ -14,9 +14,10 @@ import {
   Building,
   ScrollText
 } from 'lucide-react';
-import { CanvasElement, PaperTextureType, EbruPaperSettings, FrameBorderType } from '../types/calligraphy';
-import { SCRIPT_FONT_MAP, applyKashida, generateReedPenRibbonPath } from '../utils/calligraphyEngine';
-import { TAZHIB_COLLECTION } from '../data/tazhibAssets';
+import { CanvasElement, PaperTextureType, EbruPaperSettings, FrameBorderType, KelkProject } from '../types/calligraphy';
+import { SCRIPT_FONT_MAP, applyKashida, generateReedPenRibbonPath, renderProjectToCanvas } from '../utils/calligraphyEngine';
+import { getTextureCssStyle, getOutlineCssStyle } from '../utils/calligraphyEffects';
+import { TAZHIB_COLLECTION, TAZHIB_MAP, DOT_PRESETS_MAP } from '../data/tazhibAssets';
 import { SoundEngine } from '../utils/soundEffects';
 
 interface MockupPreviewModalProps {
@@ -115,6 +116,25 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
         return;
       }
 
+      // Render high-DPI calligraphy artwork using the unified engine
+      const tempProject: KelkProject = {
+        id: 'mockup_render',
+        name: 'Mockup',
+        createdAt: '',
+        updatedAt: '',
+        canvasWidth,
+        canvasHeight,
+        layoutMode: 'free',
+        paperTexture,
+        backgroundColor,
+        frameBorder,
+        elements,
+        penNibAngle: 63,
+        globalScript: 'nastaliq',
+        ebruSettings,
+      };
+      const artCanvas = await renderProjectToCanvas(tempProject, 2, false);
+
       // 1. Draw Scene Background & Lighting
       if (selectedScene === 'classic_museum_frame') {
         const bgGrad = ctx.createLinearGradient(0, 0, 0, exportCanvas.height);
@@ -159,22 +179,7 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
         const artH = frameH - 100;
         const artX = frameX + 50;
         const artY = frameY + 50;
-        ctx.fillStyle = backgroundColor || '#fbf7ee';
-        ctx.fillRect(artX, artY, artW, artH);
-
-        // Draw Artwork Text & Elements
-        elements.forEach(el => {
-          if (el.isVisible === false || !el.text) return;
-          ctx.save();
-          ctx.translate(artX + (el.x / canvasWidth) * artW, artY + (el.y / canvasHeight) * artH);
-          ctx.rotate((el.rotation || 0) * Math.PI / 180);
-          ctx.fillStyle = el.color || '#18181b';
-          ctx.font = `${(el.fontSize || 48) * (artW / canvasWidth)}px IranNastaliq, Gulzar, serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(el.text, 0, 0);
-          ctx.restore();
-        });
+        ctx.drawImage(artCanvas, artX, artY, artW, artH);
       } else if (selectedScene === 'modern_luxury_living') {
         const bgGrad = ctx.createLinearGradient(0, 0, exportCanvas.width, exportCanvas.height);
         bgGrad.addColorStop(0, '#020617');
@@ -203,21 +208,7 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
         const artH = frameH - 120;
         const artX = frameX + 60;
         const artY = frameY + 60;
-        ctx.fillStyle = backgroundColor || '#fbf7ee';
-        ctx.fillRect(artX, artY, artW, artH);
-
-        elements.forEach(el => {
-          if (el.isVisible === false || !el.text) return;
-          ctx.save();
-          ctx.translate(artX + (el.x / canvasWidth) * artW, artY + (el.y / canvasHeight) * artH);
-          ctx.rotate((el.rotation || 0) * Math.PI / 180);
-          ctx.fillStyle = el.color || '#18181b';
-          ctx.font = `${(el.fontSize || 48) * (artW / canvasWidth)}px IranNastaliq, Gulzar, serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(el.text, 0, 0);
-          ctx.restore();
-        });
+        ctx.drawImage(artCanvas, artX, artY, artW, artH);
       } else {
         // General Luxury & Architectural Scene
         const bgGrad = ctx.createLinearGradient(0, 0, 0, exportCanvas.height);
@@ -247,21 +238,7 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
         const artH = frameH - 80;
         const artX = frameX + 40;
         const artY = frameY + 40;
-        ctx.fillStyle = backgroundColor || '#faf5e8';
-        ctx.fillRect(artX, artY, artW, artH);
-
-        elements.forEach(el => {
-          if (el.isVisible === false || !el.text) return;
-          ctx.save();
-          ctx.translate(artX + (el.x / canvasWidth) * artW, artY + (el.y / canvasHeight) * artH);
-          ctx.rotate((el.rotation || 0) * Math.PI / 180);
-          ctx.fillStyle = el.color || '#18181b';
-          ctx.font = `${(el.fontSize || 48) * (artW / canvasWidth)}px IranNastaliq, Gulzar, serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(el.text, 0, 0);
-          ctx.restore();
-        });
+        ctx.drawImage(artCanvas, artX, artY, artW, artH);
       }
 
       // Download
@@ -311,6 +288,17 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
           }}
         />
 
+        {/* Traditional Frame Borders */}
+        {frameBorder === 'classic_gold' && (
+          <div className="absolute inset-2 border border-amber-600/70 pointer-events-none rounded" />
+        )}
+        {frameBorder === 'tazhib_full' && (
+          <div className="absolute inset-3 border-2 border-amber-500 pointer-events-none rounded" />
+        )}
+        {frameBorder === 'chlipa_traditional' && (
+          <div className="absolute inset-4 border border-amber-800/60 pointer-events-none" />
+        )}
+
         {/* Elements */}
         {elements.map(el => {
           if (el.isVisible === false) return null;
@@ -318,12 +306,14 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
           if (el.type === 'stroke' && el.strokeData) {
             const strokePath = generateReedPenRibbonPath(
               el.strokeData.points.map(p => ({ ...p, x: p.x * scale, y: p.y * scale })),
-              el.strokeData.nibWidth * scale,
-              el.strokeData.nibAngle
+              el.strokeData.nibAngle,
+              el.strokeData.nibWidth * scale
             );
             return (
               <svg
                 key={el.id}
+                width={canvasWidth * scale}
+                height={canvasHeight * scale}
                 className="absolute inset-0 pointer-events-none"
                 style={{ zIndex: el.zIndex || 1 }}
               >
@@ -336,8 +326,41 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
             );
           }
 
+          if (el.type === 'dot') {
+            const dotSize = Math.max(10, Math.round((el.fontSize || 24) * 0.9 * scale));
+            const dotColor = el.goldEffect ? '#d97706' : (el.color || '#18181b');
+            const preset = el.dotPreset ? DOT_PRESETS_MAP.get(el.dotPreset) : null;
+            return (
+              <div
+                key={el.id}
+                className="absolute pointer-events-none flex items-center justify-center"
+                style={{
+                  left: `${el.x * scale}px`,
+                  top: `${el.y * scale}px`,
+                  width: `${dotSize}px`,
+                  height: `${dotSize}px`,
+                  transform: `translate(-50%, -50%) rotate(${el.rotation || 0}deg) scale(${el.scaleX || 1}, ${el.scaleY || 1})`,
+                  color: dotColor,
+                  opacity: el.opacity ?? 1,
+                  zIndex: (el.zIndex || 10) + 20,
+                }}
+              >
+                {preset ? (
+                  <div
+                    className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                    dangerouslySetInnerHTML={{ __html: preset.svg }}
+                  />
+                ) : (
+                  <svg viewBox="0 0 30 30" className="w-full h-full">
+                    <polygon points="15,2 28,15 15,28 2,15" fill={dotColor} />
+                  </svg>
+                )}
+              </div>
+            );
+          }
+
           if (el.type === 'tazhib') {
-            const tazhibItem = TAZHIB_COLLECTION.find(t => t.id === el.tazhibName);
+            const tazhibItem = TAZHIB_MAP.get(el.tazhibName || '') || TAZHIB_COLLECTION.find(t => t.id === el.tazhibName);
             return (
               <div
                 key={el.id}
@@ -355,8 +378,14 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
               >
                 {tazhibItem ? (
                   <svg viewBox={tazhibItem.viewBox} className="w-full h-full">
-                    <path d={tazhibItem.path} fill="currentColor" />
+                    <path d={tazhibItem.path} fill={el.color || tazhibItem.defaultColor || '#d97706'} />
                   </svg>
+                ) : el.tazhibSvg ? (
+                  <div
+                    className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                    style={{ color: el.color || '#d97706', fill: el.color || '#d97706' }}
+                    dangerouslySetInnerHTML={{ __html: el.tazhibSvg }}
+                  />
                 ) : (
                   <div className="text-[10px] text-amber-500 font-nastaliq">{el.text}</div>
                 )}
@@ -368,21 +397,28 @@ export const MockupPreviewModal: React.FC<MockupPreviewModalProps> = React.memo(
           const appliedText = el.kashidaLevel || el.dotKashidaUnits
             ? applyKashida(el.text || '', el.kashidaLevel || 0, el.dotKashidaUnits)
             : (el.text || '');
+          const textureStyle = getTextureCssStyle(el.textureFill, el.color);
+          const outlineStyle = getOutlineCssStyle(el.outlineEnabled, (el.outlineWidth || 1) * scale, el.outlineColor, el.outlineStyle);
 
           return (
             <div
               key={el.id}
-              className="absolute pointer-events-none select-none text-center whitespace-pre leading-none"
+              className={`absolute pointer-events-none select-none text-center whitespace-pre leading-none dir-rtl ${
+                el.goldEffect && !el.textureFill
+                  ? 'bg-gradient-to-r from-amber-300 via-yellow-500 to-amber-600 bg-clip-text text-transparent'
+                  : ''
+              }`}
               style={{
                 left: `${el.x * scale}px`,
                 top: `${el.y * scale}px`,
                 transform: `translate(-50%, -50%) rotate(${el.rotation}deg) scale(${el.scaleX}, ${el.scaleY})`,
                 fontSize: `${(el.fontSize || 48) * scale}px`,
-                fontFamily: el.fontFamily ? el.fontFamily : SCRIPT_FONT_MAP[el.script || 'nastaliq'],
-                color: el.color || '#18181b',
+                fontFamily: el.fontFamily || SCRIPT_FONT_MAP[el.script || 'nastaliq']?.cssFamily || 'IranNastaliq, serif',
                 opacity: el.opacity,
                 zIndex: el.zIndex || 1,
-                textShadow: el.shadowBlur ? `${el.shadowOffsetX || 0}px ${el.shadowOffsetY || 0}px ${el.shadowBlur * scale}px ${el.shadowColor || 'rgba(0,0,0,0.5)'}` : 'none',
+                textShadow: el.shadowBlur ? `${el.shadowOffsetX || 0}px ${el.shadowOffsetY || 0}px ${el.shadowBlur * scale}px ${el.shadowColor || 'rgba(0,0,0,0.5)'}` : undefined,
+                ...textureStyle,
+                ...outlineStyle,
               }}
             >
               {appliedText}

@@ -5,13 +5,15 @@ import { CanvasElement } from '../types/calligraphy';
 interface CustomVectorImporterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddVectorElement: (element: Partial<CanvasElement>) => void;
+  onAddVectorElement?: (element: CanvasElement) => void;
+  onImportSvg?: (element: CanvasElement) => void;
 }
 
 export const CustomVectorImporterModal: React.FC<CustomVectorImporterModalProps> = ({
   isOpen,
   onClose,
   onAddVectorElement,
+  onImportSvg,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [svgText, setSvgText] = useState('');
@@ -33,6 +35,7 @@ export const CustomVectorImporterModal: React.FC<CustomVectorImporterModalProps>
       };
       reader.readAsText(file);
     }
+    e.target.value = '';
   };
 
   const handlePasteSvg = (text: string) => {
@@ -47,13 +50,17 @@ export const CustomVectorImporterModal: React.FC<CustomVectorImporterModalProps>
   const handleImport = () => {
     if (!svgText.trim()) return;
 
-    onAddVectorElement({
+    const newElement: CanvasElement = {
+      id: `vector_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       type: 'tazhib',
       name: vectorName || 'نقش برداری',
       tazhibSvg: svgText,
-      tazhibName: vectorName,
+      tazhibName: vectorName || 'custom_svg',
       color: vectorColor,
+      x: 450,
+      y: 325,
       fontSize: 120,
+      fontFamily: 'Vazirmatn, sans-serif',
       width: 150,
       height: 150,
       scaleX: 1,
@@ -61,7 +68,10 @@ export const CustomVectorImporterModal: React.FC<CustomVectorImporterModalProps>
       rotation: 0,
       opacity: 1,
       zIndex: 50,
-    });
+    };
+
+    const fn = onImportSvg || onAddVectorElement;
+    if (fn) fn(newElement);
 
     onClose();
   };
